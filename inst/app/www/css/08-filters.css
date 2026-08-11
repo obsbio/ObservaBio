@@ -1,0 +1,176 @@
+/* ==========================================================================
+   08-filters.css — Resultado filter bar (drives the table AND the map)
+   The pills are a checkbox group in disguise: Shiny owns the state (one stable
+   input per dimension, no dynamically created observers), the CSS owns the
+   look. Shiny renders a checkbox group either as BS5 `.form-check` or as the
+   legacy `label.checkbox-inline`, depending on the theme context at render
+   time, so both markups are styled here. Text + dot, never colour alone
+   (anti-pattern #6).
+   ========================================================================== */
+
+/* A toolbar, not a panel (ADR-019): one row of chips that wraps, with the
+   "Filtrar" label at the head and the visible-count at the tail. */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.filter-bar__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.filter-bar > .shiny-html-output { flex: 1 1 auto; min-width: 0; }
+
+/* The dimensions flow inline; each keeps its label so a dot is never the only
+   thing telling the user what the chip means. */
+.filter-groups {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+}
+.filter-groups .shiny-input-checkboxgroup {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+}
+
+/* Dimension title ("Distribuição", "Táxon", …) */
+.filter-groups .control-label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.filter-groups .shiny-options-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The checkbox carries the state; the pill is what the user sees and clicks. */
+.filter-groups input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+.filter-groups .checkbox-inline,
+.filter-groups .form-check,
+.filter-groups .form-check-label {
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  cursor: pointer;
+}
+
+/* ── The pill ───────────────────────────────────────────────────────────── */
+.filter-pill {
+  --pill-accent: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0.3rem 13px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  transition: var(--transition-fast);
+}
+.filter-pill .dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--pill-accent);
+  flex: 0 0 auto;
+}
+.filter-pill__count {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.filter-pill:hover {
+  border-color: var(--pill-accent);
+  background: var(--hover-bg);
+}
+
+/* Checked = active: the option's accent takes over the border. */
+.filter-groups input[type="checkbox"]:checked + span .filter-pill,
+.filter-groups .form-check-input:checked + .form-check-label .filter-pill {
+  border-color: var(--pill-accent);
+  box-shadow: inset 0 0 0 1px var(--pill-accent);
+  background: var(--bg-sunken);
+  font-weight: var(--weight-semibold);
+}
+/* The real checkbox is invisible, so the focus ring has to live on the pill. */
+.filter-groups input[type="checkbox"]:focus-visible + span .filter-pill,
+.filter-groups .form-check-input:focus-visible + .form-check-label .filter-pill {
+  box-shadow: var(--focus-ring-primary);
+}
+
+/* ── Accents — each option keeps the colour it has as a badge elsewhere ──── */
+.filter-pill--area      { --pill-accent: var(--data-navy); }
+
+.filter-pill--confirmed { --pill-accent: var(--success); }
+.filter-pill--present   { --pill-accent: var(--info-ink); }
+.filter-pill--outside   { --pill-accent: var(--warning-ink); }
+.filter-pill--nodata    { --pill-accent: var(--text-muted); }
+
+.filter-pill--animal    { --pill-accent: var(--secondary-ink); }
+.filter-pill--plant     { --pill-accent: var(--success); }
+.filter-pill--fungi     { --pill-accent: #6b4e8a; }
+.filter-pill--other     { --pill-accent: var(--text-muted); }
+
+.filter-pill--threat    { --pill-accent: #8a6f0f; }
+.filter-pill--invasive  { --pill-accent: var(--error); }
+
+.filter-pill--accepted  { --pill-accent: var(--success); }
+.filter-pill--synonym   { --pill-accent: var(--info-ink); }
+.filter-pill--ambiguous { --pill-accent: var(--warning-ink); }
+.filter-pill--notfound  { --pill-accent: var(--error); }
+.filter-pill--validated { --pill-accent: var(--text-muted); }
+
+/* ── Tail — how much is showing + clear ─────────────────────────────────── */
+.filter-bar__foot {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.filter-bar__count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.filter-bar__clear {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 0.2rem var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+}
+.filter-bar__clear:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--hover-bg);
+}

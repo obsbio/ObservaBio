@@ -1,0 +1,53 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Secrets / local env
+.Renviron
+.env
+
+# Build / temp
+*.tar.gz
+/docs/_site/
+/data-raw/tmp/
+
+# The embedded reference bases (inst/extdata/*.rds) MUST be committed — they are
+# the offline Brazil cut shipped in the bundle. Do not ignore them.
+
+# --------------------------------------------------------------------------
+# Documentation and project meta — kept local, never pushed.
+#
+# The repository carries only what runs the app and what maintains it. The
+# decision record, the spec and the agent instructions live on disk here and
+# are NOT versioned. They have no backup: copy them somewhere else if they
+# matter to you.
+# --------------------------------------------------------------------------
+/docs/
+/SPEC.md
+/CONTRIBUTING.md
+/.claude/
+
+# --------------------------------------------------------------------------
+# Client material — never commit. A budget document tracked in the first
+# commit of the previous repository is the reason this repository exists.
+# These patterns fail closed: anything matching stays out even if staged by
+# accident with `git add .`.
+# --------------------------------------------------------------------------
+/*.docx
+/*.doc
+/*.pdf
+/*.xlsx
+/*.csv
+Biodiversidade Darwincore*
+
+# Local scratch: implementation specs, visual reference, test fixtures.
+/zhouse-specs/
+/zhouse-correcoes/
+/zhouse_area_teste.zip

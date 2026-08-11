@@ -1,0 +1,50 @@
+Package: validabio
+Title: ZHOUSE Darwin Core Standardization and Biodiversity Validation
+Version: 0.0.0.9000
+Authors@R:
+    person("Rogerio", "Nunes Oliveira", email = "rogerio.onza@outlook.com",
+           role = c("aut", "cre"))
+Description: Shiny-as-package application (PT-BR UI) that standardizes species
+    lists to Darwin Core and validates names against Brazilian botanical and
+    zoological authorities (Flora do Brasil, Fauna do Brasil) with a live GBIF
+    backbone fallback. Cross-checks conservation status (MMA + IUCN) and runs a
+    geographic verification (10 km buffer + GBIF occurrences + state/biome) to
+    flag species distribution. Ships embedded reference bases and a modular
+    provider contract so new authorities can be added without touching the engine.
+License: file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
+Imports:
+    shiny (>= 1.8.1),
+    bslib (>= 0.5.0),
+    htmltools,
+    readxl (>= 1.4.0),
+    writexl (>= 1.4.0),
+    stringr (>= 1.5.0),
+    dplyr (>= 1.1.0),
+    DT (>= 0.28),
+    leaflet (>= 2.1.0),
+    sf (>= 1.0.0),
+    terra (>= 1.7.0),
+    jsonlite (>= 1.8.0),
+    rlang (>= 1.0.0),
+    florabr (>= 1.3.0),
+    rgbif (>= 3.7.0),
+    faunabr,
+    httr2 (>= 1.0.0),
+    rredlist (>= 1.0.0),
+    pkgload (>= 1.3.0)
+Suggests:
+    testthat (>= 3.0.0),
+    geobr,
+    CoordinateCleaner (>= 3.0.0),
+    devtools,
+    roxygen2,
+    rsconnect,
+    zip
+Remotes:
+    github::wevertonbio/faunabr@66b3466
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3

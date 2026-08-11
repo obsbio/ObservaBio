@@ -1,0 +1,163 @@
+/* ==========================================================================
+   02-layout.css — the full-bleed workspace (ADR-019)
+   The app IS the viewport: a fixed dark rail (brand + navigation) on the left,
+   the step content filling everything else and scrolling on its own. No top
+   header, no bottom footer — both moved into the rail (03-wizard.css).
+   ========================================================================== */
+
+.app-shell {
+  height: 100vh;
+  display: grid;
+  grid-template-columns: var(--rail-w) 1fr;
+  background: var(--bg-main);
+  overflow: hidden;             /* only .app-main scrolls */
+}
+
+/* ── Main — the only scrolling surface ──────────────────────────────────── */
+.app-main {
+  position: relative;
+  overflow-y: auto;
+  min-width: 0;                 /* let the DataTable scroll, not stretch the grid */
+}
+/* Subtle dotted paper under the step content. */
+.zh-topo {
+  background-image: radial-gradient(circle at 1px 1px, rgba(34, 40, 38, 0.05) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+/* Marca d'água do Observatório sob o conteúdo do passo. Pseudo-elemento (e não
+   uma segunda camada de background) porque só assim se controla a opacidade da
+   imagem; `fixed` porque .app-main é a superfície que rola e um background
+   rolaria junto até sumir. .app-main é só `position: relative`, então o
+   `overflow-y: auto` não recorta o pseudo — daí o `left` explícito, para não
+   sangrar sob a trilha. */
+.app-main::before {
+  content: "";
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: var(--rail-w);
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("img/obsbio-prancha-lapis.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  /* 90% de transparência — o desenho fica no limiar do perceptível, que é o que
+     se quer de uma marca d'água atrás de tabela e mapa. Valor escolhido pelo olho
+     do cliente, não por cálculo: 0.35 e depois 0.2 ainda pesavam. */
+  opacity: 0.1;
+}
+
+/* ── Step screens ───────────────────────────────────────────────────────── */
+/* Posicionado para ficar acima da marca d'água de .app-main::before. */
+.step-panel {
+  position: relative;
+  z-index: 1;
+  padding: var(--screen-pad-y) var(--screen-pad-x);
+  animation: step-fade 0.25s ease;
+}
+@keyframes step-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Title block: eyebrow + serif heading (+ an optional note pinned right). */
+.step-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.step-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--secondary-ink);
+  margin-bottom: var(--space-3);
+}
+.step-heading {
+  font-size: clamp(1.6rem, 2.6vw, 2.125rem);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.step-lede {
+  color: var(--text-muted);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  max-width: 60ch;
+  margin: var(--space-3) 0 var(--space-8);
+}
+/* Inline mono token inside prose ("scientificName"). */
+.step-lede code {
+  font-size: 0.875rem;
+  background: var(--bg-sunken);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+/* ── Step grids ─────────────────────────────────────────────────────────── */
+/* Step 1 is a form, not a workspace: it keeps a card-sized cap instead of
+   stretching the drop zones across a 2500px monitor (same reasoning as
+   .export-grid, ADR-018 §1). The workspace screens have no cap. */
+.upload-form { max-width: 72rem; }
+.upload-duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+/* A right-aligned action row (Step 1's "Continuar", Step 3's "Ir para
+   exportação" — the latter spans the full workspace width). */
+.upload-actions {
+  margin-top: var(--space-6);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Results (Step 3) — one column: stats, map, filters, table, detail. */
+.results-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+/* Stat strip — five cells sharing hairline rules (gap over a dark backdrop). */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1px;
+  background: rgba(34, 40, 38, 0.10);
+  border: 1px solid rgba(34, 40, 38, 0.10);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+
+/* Export cards row (Step 4) — two cards only: keep a card-sized measure. */
+.export-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  max-width: 72rem;
+}
+
+/* ── Responsive reflow ──────────────────────────────────────────────────── */
+/* Too narrow for a side rail: it becomes a horizontal strip on top, and the
+   page (not .app-main) takes over the scrolling. */
+@media (max-width: 900px) {
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    overflow: visible;
+  }
+  .app-main { overflow-y: visible; }
+  .app-main::before { left: 0; }   /* a trilha deixou de ser coluna */
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .upload-duo { grid-template-columns: 1fr; }
+  .export-grid { grid-template-columns: 1fr; }
+  .stat-strip { grid-template-columns: 1fr; }
+}

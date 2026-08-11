@@ -1,0 +1,28 @@
+{
+  "base": "invasive_species",
+  "version": "2026-07",
+  "date": "2026-07-13",
+  "sources": [
+    {
+      "label": "Instituto Hórus 2023",
+      "file": "invasive_horus_2023.csv",
+      "n_species": 482
+    },
+    {
+      "label": "GRIIS Brasil",
+      "file": "invasive_griis_brasil.csv",
+      "n_species": 1203
+    },
+    {
+      "label": "UCs Federais",
+      "file": "invasive_ucs_federais.csv",
+      "n_species": 286
+    }
+  ],
+  "n_species": 1409,
+  "n_by_source": {
+    "Instituto Hórus 2023": 482,
+    "GRIIS Brasil": 1203,
+    "UCs Federais": 286
+  }
+}

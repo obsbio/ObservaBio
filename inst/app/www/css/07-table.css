@@ -1,0 +1,79 @@
+/* ==========================================================================
+   07-table.css — DT (DataTables) overrides for the results table.
+   Clean GitHub-like rows, mono data, brand header. Guardrail: horizontal
+   overflow scrolls inside the wrapper, the page never scrolls sideways.
+   ========================================================================== */
+
+.results-table {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+/* The navy band runs edge to edge, so the padding lives on the DT chrome
+   (search, length, info, paginate) instead of on the wrapper. */
+.results-table .dataTables_wrapper { padding: var(--space-4) 0; }
+.results-table .dataTables_wrapper .row { margin: 0; }
+.results-table .dataTables_wrapper .row > * { padding-left: 0; padding-right: 0; }
+.results-table .dataTables_length,
+.results-table .dataTables_filter,
+.results-table .dataTables_info,
+.results-table .dataTables_paginate {
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
+table.dataTable {
+  border-collapse: collapse !important;
+  font-size: var(--text-sm);
+}
+/* Navy header band — the table reads as a document, not as a widget. */
+table.dataTable thead th {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--data-navy);
+  border-bottom: none !important;
+  padding: 13px var(--space-4);
+}
+table.dataTable thead th.sorting:after,
+table.dataTable thead th.sorting_asc:after,
+table.dataTable thead th.sorting_desc:after { color: rgba(255, 255, 255, 0.55); }
+table.dataTable tbody td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-light) !important;
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+table.dataTable tbody tr { transition: var(--transition-fast); }
+table.dataTable tbody tr:hover { background: var(--hover-bg); cursor: pointer; }
+table.dataTable tbody tr.selected,
+table.dataTable tbody tr.selected td { background: var(--active-bg) !important; box-shadow: inset 3px 0 0 var(--primary); }
+
+/* Monospace the id / taxonID-ish columns via a helper class on the column */
+table.dataTable td.mono, table.dataTable td.dt-mono { font-family: var(--font-mono); color: var(--text-muted); }
+
+/* Scientific-name column keeps the serif italic */
+table.dataTable td.sci-name { font-family: var(--font-serif); font-style: italic; color: var(--text-primary); }
+
+/* DT chrome */
+.dataTables_wrapper .dataTables_filter input {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 0.25rem var(--space-4);
+}
+.dataTables_wrapper .dataTables_filter input:focus { border-color: var(--primary); box-shadow: var(--focus-ring-primary); outline: none; }
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+  border-radius: var(--radius);
+}
+.dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_length label { color: var(--text-muted); font-size: var(--text-sm); }
+
+/* Keep wide tables scrolling inside their own container */
+.dataTables_scrollBody, .results-table { max-width: 100%; }

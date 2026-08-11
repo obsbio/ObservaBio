@@ -1,0 +1,11 @@
+{
+  "provider": "br_uf_biomes",
+  "version": "states:2020;biomes:2019",
+  "date": "2026-07-03",
+  "source": "IBGE via geobr::read_state + geobr::read_biomes",
+  "geobr": "2.0.1",
+  "crs": "EPSG:4326",
+  "states": 27,
+  "biomes": 7,
+  "biome_labels": ["Amazon", "Atlantic_Forest", "Caatinga", "Cerrado", "Pampa", "Pantanal", "Coastal_System"]
+}

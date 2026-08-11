@@ -1,0 +1,142 @@
+/* ==========================================================================
+   06-map.css — leaflet container + the two floating overlays: the operation-area
+   context card (top-left, was the results sidebar) and the legend (bottom-right).
+   The map is the hero of Step 3 (ADR-019).
+   ========================================================================== */
+
+/* The map owns its height here (leafletOutput passes height:100%), so the hero
+   grows with the viewport instead of being pinned to an inline px value. */
+.map-card {
+  height: clamp(320px, 42vh, 520px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-hero);
+  overflow: hidden;          /* clip tiles to the rounded corner */
+  position: relative;
+}
+.map-card .leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: var(--bg-sunken);
+  font-family: var(--font-sans);
+}
+
+/* Popup — espécie (serif italic) + fonte (mono) */
+.leaflet-popup-content .popup-sci { font-family: var(--font-serif); font-style: italic; font-weight: 600; }
+.leaflet-popup-content .popup-src { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+
+/* ── Context card (top-left) — UF/bioma + the distributionFlag counts ───── */
+.map-context {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 500;
+  width: 15rem;
+  max-height: calc(100% - 2 * var(--space-4));
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 8px 22px rgba(34, 40, 38, 0.14);
+  padding: var(--space-4);
+}
+.map-context .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.map-context .chip { padding: 0.1rem var(--space-3); font-size: 11px; }
+/* Park leaflet's zoom control top-right so it never sits under the operation-area
+   card, which owns the top-left corner (the shapes legend is bottom-right). */
+.map-card .leaflet-top.leaflet-left { left: auto; right: 0; }
+.geo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+/* No shapefile: the card says so instead of showing empty counts. */
+.geo-empty {
+  margin: var(--space-3) 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* One block per uploaded study area. The name + colour dot only appear when
+   there is more than one area to tell apart (mod_geo_verify.R). */
+.geo-area + .geo-area {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-light);
+}
+.geo-area__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.geo-area__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.geo-area__name {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+/* The map legend carries the same note but hides below 900px; this one does not. */
+.geo-note {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-light);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* ── Legend (bottom-right) ──────────────────────────────────────────────── */
+.map-legend {
+  position: absolute;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 500;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  gap: var(--space-4);
+}
+.map-legend__item { display: flex; align-items: center; gap: var(--space-2); font-size: 11px; color: var(--text-primary); }
+.map-legend__swatch { width: 0.75rem; height: 0.75rem; border-radius: var(--radius-sm); flex: 0 0 auto; }
+.map-legend__swatch--area   { background: var(--primary); opacity: 0.55; border: 1px solid var(--primary); }
+.map-legend__swatch--buffer { background: var(--warning); opacity: 0.35; border: 1px dashed var(--sand); }
+.map-legend__swatch--occ    { background: var(--secondary); border-radius: var(--radius-full); }
+
+/* Narrow screens: the overlays would swallow the map, so they sit under it —
+   which means the card has to grow past the map. The !important is the only way
+   to beat the inline height:100% htmlwidgets writes on the leaflet div. */
+@media (max-width: 900px) {
+  .map-card { height: auto; }
+  .map-card .leaflet-container { height: 300px !important; }
+  .map-context {
+    position: static;
+    width: auto;
+    max-height: none;
+    border: none;
+    border-top: 1px solid var(--border-light);
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--bg-card);
+  }
+  .map-legend { display: none; }
+}

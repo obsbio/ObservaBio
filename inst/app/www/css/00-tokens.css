@@ -1,0 +1,111 @@
+/* ==========================================================================
+   00-tokens.css — ZHOUSE design tokens (single source: docs/design.md v1.0)
+   All values below are the canonical tokens. Never hard-code a hex in the
+   component files — reference a var() from here.
+   ========================================================================== */
+
+:root {
+  /* ── Base — neutros quentes ──────────────────────────────────────────── */
+  --bg-main:       #F7F3E9;  /* marfim OBS Bio — superfície da app (NON-NEGOTIABLE) */
+  --bg-card:       #FFFFFF;  /* cartões / superfícies elevadas */
+  --bg-sunken:     #EFEADD;  /* areia clara — painéis recuados, wells */
+  --text-primary:  #222826;  /* tinta-floresta — 13.5:1 AAA */
+  --text-muted:    #6B675C;  /* taupe-escuro — 5.1:1 AA */
+
+  /* ── Marca — Terra & Ciência ─────────────────────────────────────────── */
+  --primary:       #1E4620;
+  --primary-hover: #163418;
+  --primary-soft:  #2E7D4F;
+  --secondary:     #C86446;
+  --secondary-ink: #A84A30;
+  --sand:          #C9AE7C;
+  --data-navy:     #192353;  /* cabeçalho da tabela de resultados */
+
+  /* ── Trilha (rail) — navegação escura persistente (ADR-019) ───────────── */
+  /* Sem cor nova: a trilha é o verde primário da marca, e tudo que vive sobre
+     ela é o creme (--bg-sunken) em diferentes opacidades. */
+  --rail-bg:     var(--primary);
+  --rail-ink:    var(--bg-sunken);
+  --rail-label:  rgba(239, 234, 221, 0.72);  /* creme 72% — rótulos inativos */
+  --rail-muted:  rgba(239, 234, 221, 0.55);  /* creme 55% — subtítulos/eyebrows */
+  --rail-hover:  rgba(239, 234, 221, 0.08);
+  --rail-active: rgba(239, 234, 221, 0.12);
+  --rail-line:   rgba(239, 234, 221, 0.18);
+
+  /* ── Estados semânticos ──────────────────────────────────────────────── */
+  --success:        #277148;
+  --success-bg:     rgba(39, 113, 72, 0.10);
+  --success-border: rgba(39, 113, 72, 0.25);
+
+  --info:           #2B7DA3;
+  --info-ink:       #1F6688;
+  --info-bg:        rgba(43, 125, 163, 0.10);
+  --info-border:    rgba(43, 125, 163, 0.25);
+
+  --warning:        #E5A93C;
+  --warning-ink:    #8A5A00;
+  --warning-bg:     rgba(229, 169, 60, 0.12);
+  --warning-border: rgba(229, 169, 60, 0.30);
+
+  --error:          #B23A2E;
+  --error-bg:       rgba(178, 58, 46, 0.10);
+  --error-border:   rgba(178, 58, 46, 0.25);
+
+  /* ── Bordas / superfícies ────────────────────────────────────────────── */
+  --border-light:   rgba(34, 40, 38, 0.08);
+  --border-default: rgba(34, 40, 38, 0.16);
+  --border-strong:  rgba(34, 40, 38, 0.30);
+  --overlay:        rgba(34, 40, 38, 0.50);
+  --hover-bg:       rgba(30, 70, 32, 0.06);
+  --active-bg:      rgba(30, 70, 32, 0.12);
+
+  /* ── Tipografia ──────────────────────────────────────────────────────── */
+  --font-serif: 'Noto Serif', Georgia, 'Times New Roman', serif;
+  --font-sans:  'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:  'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  --text-xs: 0.75rem;  --text-sm: 0.825rem;  --text-base: 1rem;
+  --text-md: 1.125rem; --text-lg: 1.25rem;   --text-xl: 1.5rem;  --text-2xl: 1.875rem;
+  --text-3xl: 2.5rem;
+
+  --weight-regular: 400;  --weight-medium: 500;  --weight-semibold: 600;
+  --leading-tight: 1.25;  --leading-normal: 1.6;  --leading-relaxed: 1.75;
+
+  /* ── Espaçamento ─────────────────────────────────────────────────────── */
+  --space-1: 0.25rem; --space-2: 0.5rem;  --space-3: 0.75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem;  --space-8: 2rem;    --space-10: 2.5rem; --space-12: 3rem;
+
+  /* ── Raio ────────────────────────────────────────────────────────────── */
+  /* Escala mais generosa desde o rework (ADR-019): chips/botões 10–12px,
+     painéis 14px, cards 16px, o frame externo 20px. */
+  --radius-sm: 4px;  --radius: 8px;  --radius-lg: 12px;
+  --radius-panel: 14px;  --radius-xl: 16px;  --radius-full: 9999px;
+
+  /* ── Sombras ─────────────────────────────────────────────────────────── */
+  --shadow-sm:    0 1px 4px  rgba(34, 40, 38, 0.05);
+  --shadow:       0 2px 8px  rgba(34, 40, 38, 0.08);
+  --shadow-md:    0 4px 12px rgba(34, 40, 38, 0.10);
+  --shadow-hover: 0 6px 18px rgba(34, 40, 38, 0.12);
+  /* Sombras suaves do rework: card e herói (mapa). */
+  --shadow-card:  0 6px 20px rgba(34, 40, 38, 0.07);
+  --shadow-hero:  0 8px 26px rgba(34, 40, 38, 0.10);
+
+  /* ── Focus rings (nunca remover) ─────────────────────────────────────── */
+  --focus-ring-primary: 0 0 0 3px rgba(30, 70, 32, 0.30);
+  --focus-ring-error:   0 0 0 3px rgba(178, 58, 46, 0.25);
+
+  /* ── Movimento ───────────────────────────────────────────────────────── */
+  --transition-fast: all 0.15s ease;
+  --transition-base: all 0.2s ease;
+  --lift-sm: translateY(-1px);
+
+  /* ── Layout ──────────────────────────────────────────────────────────── */
+  /* The app fills the viewport (ADR-019): a fixed dark rail on the left, the
+     step content taking all the remaining width and scrolling on its own. The
+     map and the table ARE the screen, so nothing caps the workspace; reading
+     measure is capped per element (.step-lede) and the two form-like screens
+     keep a card-sized cap of their own (.upload-duo, .export-grid). */
+  --rail-w: 264px;
+  --screen-pad-y: clamp(var(--space-6), 3.2vw, 44px);
+  --screen-pad-x: clamp(var(--space-5), 3.6vw, 48px);
+}

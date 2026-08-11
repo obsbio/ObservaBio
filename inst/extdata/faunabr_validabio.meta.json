@@ -1,0 +1,9 @@
+{
+  "provider": "faunabr",
+  "version": "1.53",
+  "date": "2026-07-02",
+  "source": "Catálogo Taxonômico da Fauna do Brasil (faunabr::get_faunabr)",
+  "nrow": 195549,
+  "ncol": 20,
+  "columns": ["species", "subspecies", "scientificName", "validName", "phylum", "class", "order", "family", "genus", "lifeForm", "habitat", "states", "countryCode", "origin", "taxonomicStatus", "nomenclaturalStatus", "vernacularName", "taxonRank", "id", "language"]
+}

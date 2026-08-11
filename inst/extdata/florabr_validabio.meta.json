@@ -1,0 +1,9 @@
+{
+  "provider": "florabr",
+  "version": "393.428",
+  "date": "2026-07-02",
+  "source": "Flora e Funga do Brasil (florabr::get_florabr)",
+  "nrow": 164790,
+  "ncol": 23,
+  "columns": ["species", "scientificName", "acceptedName", "kingdom", "group", "subgroup", "phylum", "class", "order", "family", "genus", "lifeForm", "habitat", "biome", "states", "vegetation", "origin", "endemism", "taxonomicStatus", "nomenclaturalStatus", "vernacularName", "taxonRank", "id"]
+}

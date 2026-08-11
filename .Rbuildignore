@@ -1,0 +1,28 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.claude$
+^\.github$
+^data-raw$
+^docs$
+^SPEC\.md$
+^CONTRIBUTING\.md$
+^orcamento.*\.docx$
+^app\.R$
+^renv\.lock$
+^manifest\.json$
+# Posit Publisher state for the IDE deploy route (config + deployment records).
+# Committed on purpose so a publish is reproducible, but it is deploy metadata,
+# not package source — same reasoning as renv.lock and manifest.json above.
+^\.posit$
+# Shiny deploy sentinel — must be named _disable_autoload.r (leading underscore),
+# which R CMD build rejects as an invalid R/ file name. It is not package code
+# (only a loadSupport switch at deploy time), so keep it out of the built package
+# while it stays on disk in R/ for the deploy bundle. See R/_disable_autoload.R.
+^R/_disable_autoload\.R$
+^Biodiversidade Darwincore.*
+^zhouse_planilha_teste.*\.xlsx$
+^zhouse_area_teste\.zip$
+^zhouse-specs$
+^zhouse-correcoes$
+^LICENSE\.md$
+^\.gitignore$

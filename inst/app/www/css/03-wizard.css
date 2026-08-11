@@ -1,0 +1,155 @@
+/* ==========================================================================
+   03-wizard.css — the left rail: brand, the 4-step trail (Enviar → Processar →
+   Resultado → Exportar), the "Como usar" trigger and the partner logos.
+   It replaces the old top header + horizontal stepper + white footer (ADR-019).
+   ========================================================================== */
+
+.app-rail {
+  background: var(--rail-bg);
+  color: var(--rail-ink);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-8) var(--space-5);
+  min-height: 0;                 /* the rail may scroll if the frame is short */
+  overflow-y: auto;
+}
+
+/* ── Brand — o wordmark do Observatório Biodiversidade ──────────────────── */
+.app-rail__brand {
+  margin-bottom: var(--space-10);
+}
+/* Branco sólido sobre o verde da trilha (a arte é preta). Sem a opacidade dos
+   logos do rodapé: aqui ele é a marca, não um crédito. */
+.app-rail__brandmark {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+  filter: brightness(0) invert(1);
+}
+
+/* Section label above the trail ("Fluxo de validação"). */
+.app-rail__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--rail-muted);
+  margin-bottom: var(--space-4);
+  padding-left: var(--space-1);
+}
+
+/* ── The trail ──────────────────────────────────────────────────────────── */
+.stepper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  border: none;
+  cursor: default;
+  transition: var(--transition-base);
+}
+/* Any reached step (except the current one) is clickable — go back or forward */
+.step.is-clickable { cursor: pointer; }
+.step.is-clickable:hover { background: var(--rail-hover); }
+
+.step__marker {
+  width: 1.875rem; height: 1.875rem;
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--rail-line);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--rail-muted);
+  transition: var(--transition-base);
+}
+.step__body { min-width: 0; line-height: 1.2; }
+.step__label {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-sm);
+  color: var(--rail-label);
+  white-space: nowrap;
+}
+.step__sub {
+  font-size: 11px;
+  color: var(--rail-muted);
+  white-space: nowrap;
+}
+
+/* States */
+.step.is-active { background: var(--rail-active); }
+.step.is-active .step__marker {
+  background: var(--rail-ink);
+  border-color: var(--rail-ink);
+  color: var(--rail-bg);
+}
+.step.is-active .step__label { color: #fff; font-weight: var(--weight-semibold); }
+
+.step.is-done .step__marker {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
+  color: #fff;
+}
+.step.is-done .step__label { color: var(--rail-ink); }
+
+/* ── Foot — "Como usar" + the partner logos ─────────────────────────────── */
+.app-rail__foot {
+  margin-top: auto;
+  padding-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.app-rail__logos {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(239, 234, 221, 0.12);
+}
+/* Monochrome on the dark rail — the logos are a credit, not a focal point. */
+.app-rail__logo {
+  height: 20px;
+  width: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.65;
+}
+
+/* ── Mobile: the rail becomes a strip on top of the content ─────────────── */
+@media (max-width: 900px) {
+  .app-rail {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    overflow-x: auto;
+  }
+  .app-rail__brand { margin-bottom: 0; }
+  /* Na faixa horizontal o wordmark é medido pela altura, não pela largura. */
+  .app-rail__brandmark { width: auto; height: 24px; }
+  .app-rail__eyebrow { display: none; }
+  .stepper { flex-direction: row; }
+  .step__sub { display: none; }
+  .app-rail__foot {
+    margin-top: 0;
+    margin-left: auto;
+    padding-top: 0;
+    flex-direction: row;
+    align-items: center;
+  }
+  .app-rail__logos { display: none; }
+}
+@media (max-width: 640px) {
+  .step__label { display: none; }
+}
