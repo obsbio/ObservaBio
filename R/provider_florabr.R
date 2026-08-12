@@ -39,7 +39,7 @@ florabr_query <- function(names, data = NULL, max_distance = 0.1) {
 
 #' Construct the Flora BR provider
 #'
-#' @return A `validabio_provider` (priority 1).
+#' @return A `ObservaBio_provider` (priority 1).
 #' @noRd
 florabr_provider <- function() {
     new_provider(

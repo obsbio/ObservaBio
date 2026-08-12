@@ -1,4 +1,4 @@
 library(testthat)
-library(validabio)
+library(ObservaBio)
 
-test_check("validabio")
+test_check("ObservaBio")

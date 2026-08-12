@@ -55,7 +55,7 @@ make_fake_provider <- function(id, priority, lookup = list(),
 #' `sample_names` is given and the provider is available, so this stays green
 #' offline / before embedded bases are prepared.
 expect_valid_provider <- function(provider, sample_names = NULL) {
-    testthat::expect_s3_class(provider, "validabio_provider")
+    testthat::expect_s3_class(provider, "ObservaBio_provider")
     for (field in c("id", "label", "type", "priority")) {
         testthat::expect_true(nzchar(as.character(provider[[field]])),
                               info = paste("missing field:", field))

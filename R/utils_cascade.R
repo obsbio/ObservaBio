@@ -408,7 +408,7 @@ build_cascade_placeholder <- function(query_names, status = "not_found") {
 #' at the pre-pass.
 #'
 #' @param query_names Character vector of raw scientific names.
-#' @param providers List of `validabio_provider` objects. Defaults to the registry.
+#' @param providers List of `ObservaBio_provider` objects. Defaults to the registry.
 #' @return Canonical-schema data frame, one row per unique normalized name, with
 #'   a `provider_failures` attribute (data frame of provider/error).
 #' @noRd

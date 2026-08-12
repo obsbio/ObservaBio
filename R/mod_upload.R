@@ -1,5 +1,5 @@
 # Title: Upload Module (Step 1 — Enviar)
-# Reactive bridge only: reads the species table via read_validabio_table() and
+# Reactive bridge only: reads the species table via read_ObservaBio_table() and
 # validates the shapefile archives via unzip_shapefiles() (pure helpers). Returns
 # `list(data, iucn_key, go)` — the parsed upload reactive, the optional
 # session-only IUCN key (ADR-005), plus a "Continuar" advance signal the
@@ -154,7 +154,7 @@ mod_upload_server <- function(id) {
         planilha_r <- shiny::reactive({
             shiny::req(input$planilha)
             tryCatch(
-                read_validabio_table(input$planilha$datapath),
+                read_ObservaBio_table(input$planilha$datapath),
                 error = function(e) {
                     shiny::showNotification(
                         paste("Falha ao ler a planilha:", conditionMessage(e)),

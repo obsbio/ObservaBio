@@ -37,7 +37,7 @@ faunabr_query <- function(names, data = NULL, max_distance = 0.1) {
 
 #' Construct the Fauna BR provider
 #'
-#' @return A `validabio_provider` (priority 2).
+#' @return A `ObservaBio_provider` (priority 2).
 #' @noRd
 faunabr_provider <- function() {
     new_provider(

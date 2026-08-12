@@ -6,12 +6,12 @@
 
 #' Register a provider in the cascade
 #'
-#' @param provider A `validabio_provider` from [new_provider()].
+#' @param provider A `ObservaBio_provider` from [new_provider()].
 #' @return Invisibly the provider id.
 #' @noRd
 register_provider <- function(provider) {
-    if (!inherits(provider, "validabio_provider")) {
-        stop("register_provider(): expected a validabio_provider object.")
+    if (!inherits(provider, "ObservaBio_provider")) {
+        stop("register_provider(): expected a ObservaBio_provider object.")
     }
     assign(provider$id, provider, envir = .provider_registry)
     invisible(provider$id)
@@ -19,7 +19,7 @@ register_provider <- function(provider) {
 
 #' Retrieve registered providers ordered by cascade priority
 #'
-#' @return List of `validabio_provider` objects, lowest `priority` first.
+#' @return List of `ObservaBio_provider` objects, lowest `priority` first.
 #' @noRd
 get_providers <- function() {
     ids <- ls(envir = .provider_registry)

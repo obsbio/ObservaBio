@@ -5,7 +5,7 @@
 # file in R/ into a shared environment BEFORE app.R runs. That collides with the
 # package: app.R already builds the real namespace via pkgload::load_all(), so R/
 # would load twice — and the raw copy is broken, because it is not a namespace,
-# so .onLoad() never fires and register_default_providers() (validabio-package.R)
+# so .onLoad() never fires and register_default_providers() (ObservaBio-package.R)
 # never runs. run_app() would then resolve to the raw copy with an empty provider
 # registry, and processing would fail while the UI still renders.
 #

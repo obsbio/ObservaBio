@@ -1,5 +1,5 @@
-Package: validabio
-Title: ZHOUSE Darwin Core Standardization and Biodiversity Validation
+Package: ObservaBio
+Title: ObservaBio Darwin Core Standardization and Biodiversity Validation
 Version: 0.0.0.9000
 Authors@R:
     person("Rogerio", "Nunes Oliveira", email = "rogerio.onza@outlook.com",

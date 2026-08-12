@@ -1,4 +1,4 @@
-# read_validabio_table decodes .xlsx/.csv/.tsv/.txt and DETECTS the header row (the
+# read_ObservaBio_table decodes .xlsx/.csv/.tsv/.txt and DETECTS the header row (the
 # first row carrying scientificName) rather than assuming row 2. The double-header
 # ZHOUSE model (PT labels row 1, DwC names row 2, data row 3) must still decode.
 
@@ -16,34 +16,34 @@ write_double_header_fixture <- function(path) {
 
 # ---- .xlsx double header (regression) ---------------------------------------
 
-test_that("read_validabio_table reads DwC names from row 2 and data from row 3", {
+test_that("read_ObservaBio_table reads DwC names from row 2 and data from row 3", {
     path <- tempfile(fileext = ".xlsx")
     on.exit(unlink(path), add = TRUE)
     write_double_header_fixture(path)
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
     expect_equal(parsed$model_cols, c("scientificName", "locality", "taxonID"))
     expect_equal(parsed$pt_labels[1:2], c("Nome cientifico", "Localidade"))
     expect_equal(parsed$records$scientificName,
                  c("Handroanthus impetiginosus", "Cedrela odorata"))
 })
 
-test_that("read_validabio_table drops fully empty rows", {
+test_that("read_ObservaBio_table drops fully empty rows", {
     path <- tempfile(fileext = ".xlsx")
     on.exit(unlink(path), add = TRUE)
     write_double_header_fixture(path)
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
     expect_equal(nrow(parsed$records), 2L)
 })
 
-test_that("read_validabio_table errors on a missing file", {
-    expect_error(read_validabio_table(tempfile(fileext = ".xlsx")), "not found")
+test_that("read_ObservaBio_table errors on a missing file", {
+    expect_error(read_ObservaBio_table(tempfile(fileext = ".xlsx")), "not found")
 })
 
 # ---- delimited text ---------------------------------------------------------
 
-test_that("read_validabio_table reads a single-header .csv (header on row 1)", {
+test_that("read_ObservaBio_table reads a single-header .csv (header on row 1)", {
     path <- tempfile(fileext = ".csv")
     on.exit(unlink(path), add = TRUE)
     writeLines(c(
@@ -52,14 +52,14 @@ test_that("read_validabio_table reads a single-header .csv (header on row 1)", {
         "Cedrela odorata,Fazenda B,"
     ), path)
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
     expect_equal(parsed$model_cols, c("scientificName", "locality", "taxonID"))
     expect_null(parsed$pt_labels)
     expect_equal(parsed$records$scientificName,
                  c("Handroanthus impetiginosus", "Cedrela odorata"))
 })
 
-test_that("read_validabio_table sniffs a semicolon separator (PT-BR export)", {
+test_that("read_ObservaBio_table sniffs a semicolon separator (PT-BR export)", {
     path <- tempfile(fileext = ".csv")
     on.exit(unlink(path), add = TRUE)
     writeLines(c(
@@ -68,7 +68,7 @@ test_that("read_validabio_table sniffs a semicolon separator (PT-BR export)", {
         "Cedrela odorata;L.;Fazenda B"
     ), path)
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
     expect_equal(parsed$model_cols,
                  c("scientificName", "scientificNameAuthorship", "locality"))
     expect_equal(nrow(parsed$records), 2L)
@@ -76,17 +76,17 @@ test_that("read_validabio_table sniffs a semicolon separator (PT-BR export)", {
     expect_equal(parsed$records$scientificNameAuthorship[1], "Mart. ex DC., 1845")
 })
 
-test_that("read_validabio_table reads a tab-separated .tsv", {
+test_that("read_ObservaBio_table reads a tab-separated .tsv", {
     path <- tempfile(fileext = ".tsv")
     on.exit(unlink(path), add = TRUE)
     writeLines(c("scientificName\tlocality", "Cichla ocellaris\tRio X"), path)
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
     expect_equal(parsed$model_cols, c("scientificName", "locality"))
     expect_equal(parsed$records$scientificName, "Cichla ocellaris")
 })
 
-test_that("read_validabio_table finds the header below preamble rows", {
+test_that("read_ObservaBio_table finds the header below preamble rows", {
     path <- tempfile(fileext = ".csv")
     on.exit(unlink(path), add = TRUE)
     writeLines(c(
@@ -96,14 +96,14 @@ test_that("read_validabio_table finds the header below preamble rows", {
         "Cichla ocellaris,Rio X,GBIF:1"
     ), path)
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
     expect_equal(parsed$model_cols, c("scientificName", "locality", "taxonID"))
     expect_equal(nrow(parsed$records), 1L)
     # The row directly above the header becomes pt_labels.
     expect_equal(parsed$pt_labels[1], "Projeto ZHOUSE")
 })
 
-test_that("read_validabio_table strips a UTF-8 BOM before detecting the header", {
+test_that("read_ObservaBio_table strips a UTF-8 BOM before detecting the header", {
     path <- tempfile(fileext = ".csv")
     on.exit(unlink(path), add = TRUE)
     con <- file(path, open = "wb")
@@ -111,23 +111,23 @@ test_that("read_validabio_table strips a UTF-8 BOM before detecting the header",
     writeBin(charToRaw("scientificName,locality\nCichla ocellaris,Rio X\n"), con)
     close(con)
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
     expect_equal(parsed$model_cols, c("scientificName", "locality"))
     expect_equal(parsed$records$scientificName, "Cichla ocellaris")
 })
 
 # ---- errors -----------------------------------------------------------------
 
-test_that("read_validabio_table errors when no header carries scientificName", {
+test_that("read_ObservaBio_table errors when no header carries scientificName", {
     path <- tempfile(fileext = ".csv")
     on.exit(unlink(path), add = TRUE)
     writeLines(c("especie,local", "Cichla ocellaris,Rio X"), path)
-    expect_error(read_validabio_table(path), "scientificName")
+    expect_error(read_ObservaBio_table(path), "scientificName")
 })
 
-test_that("read_validabio_table rejects an unsupported format", {
+test_that("read_ObservaBio_table rejects an unsupported format", {
     path <- tempfile(fileext = ".pdf")
     on.exit(unlink(path), add = TRUE)
     writeLines("x", path)
-    expect_error(read_validabio_table(path), "suportado")
+    expect_error(read_ObservaBio_table(path), "suportado")
 })

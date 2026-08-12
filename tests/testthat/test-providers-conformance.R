@@ -44,7 +44,7 @@ test_that("a fake provider passes behavioral conformance", {
 })
 
 test_that("register_provider rejects non-providers and get_providers sorts by priority", {
-    expect_error(register_provider(list(id = "x")), "validabio_provider")
+    expect_error(register_provider(list(id = "x")), "ObservaBio_provider")
 
     old <- get_providers()
     on.exit({

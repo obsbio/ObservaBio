@@ -14,7 +14,7 @@
 #' are merged and re-joined with `;`.
 #'
 #' @param names Character vector of (accepted) scientific names.
-#' @param providers List of `validabio_provider` objects (default: the registry).
+#' @param providers List of `ObservaBio_provider` objects (default: the registry).
 #' @return Data frame `query_name`/`states`/`biomes`, one row per unique name.
 #' @noRd
 providers_distribution <- function(names, providers = get_providers()) {

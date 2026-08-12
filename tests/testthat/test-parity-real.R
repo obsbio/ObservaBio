@@ -22,7 +22,7 @@ test_that("real ZHOUSE spreadsheet preserves the standardization structure", {
     path <- find_real_xlsx()
     skip_if(is.na(path), "real ZHOUSE spreadsheet not present (opt-in fixture)")
 
-    parsed <- read_validabio_table(path)
+    parsed <- read_ObservaBio_table(path)
 
     # The real model carries the conservation-status columns (scope note).
     expect_true(all(

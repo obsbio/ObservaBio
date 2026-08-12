@@ -1,6 +1,6 @@
 # Title: Deploy Entrypoint
 # The file the hosting platform runs (shinyapps.io / Posit Connect Cloud). The
-# bundle carries the package *source*, not an installed package: `validabio` is not
+# bundle carries the package *source*, not an installed package: `ObservaBio` is not
 # on CRAN and the repo is private, so the server cannot install it. `load_all()`
 # loads R/ straight from the bundle instead — hence `pkgload` is an Imports
 # dependency, not Suggests (see docs/DECISIONS.md).
