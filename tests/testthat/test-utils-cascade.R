@@ -209,7 +209,7 @@ test_that("run_cascade holds a name back from a base that does not carry it", {
     expect_equal(res$provider[res$query_name == "Cedrela odorata"], "florabr")
 })
 
-test_that("run_cascade still offers every base a name no base carries verbatim", {
+test_that("run_cascade skips the fuzzy fallback once something cheaper resolves a name", {
     seen <- new.env(parent = emptyenv())
     florabr <- make_fake_provider("florabr", 1L, exact = "Cedrela odorata", seen = seen)
     faunabr <- make_fake_provider("faunabr", 2L, exact = "Panthera onca", seen = seen)
@@ -220,11 +220,50 @@ test_that("run_cascade still offers every base a name no base carries verbatim",
 
     res <- run_cascade("Zzz nonexistus", providers = list(florabr, faunabr, gbif))
 
-    # Nobody claims it, so the full fuzzy fallback chain is untouched.
-    expect_equal(seen$florabr, "Zzz nonexistus")
-    expect_equal(seen$faunabr, "Zzz nonexistus")
+    # Neither base holds it verbatim, so pass 1 never asks them. gbif publishes no
+    # exact index, so it is asked everything, and its `accepted` settles the name
+    # before the ~0.38 s/name agrep in pass 2 can run (ADR-023).
+    expect_null(seen$florabr)
+    expect_null(seen$faunabr)
+    expect_equal(seen$gbif, "Zzz nonexistus")
     expect_equal(res$provider, "gbif")
     expect_equal(res$validation_status, "accepted")
+})
+
+test_that("run_cascade still offers every base its fuzzy pass when nothing resolves a name", {
+    seen <- new.env(parent = emptyenv())
+    florabr <- make_fake_provider("florabr", 1L, exact = "Cedrela odorata", seen = seen)
+    faunabr <- make_fake_provider("faunabr", 2L, exact = "Panthera onca", seen = seen)
+    gbif <- make_fake_provider("gbif", 3L, seen = seen)
+
+    res <- run_cascade("Zzz nonexistus", providers = list(florabr, faunabr, gbif))
+
+    # Deferring the fuzzy pass is not dropping it: with nothing cheaper to settle
+    # the name, the full fallback chain still runs.
+    expect_equal(seen$florabr, "Zzz nonexistus")
+    expect_equal(seen$faunabr, "Zzz nonexistus")
+    expect_equal(res$validation_status, "not_found")
+})
+
+test_that("a pass 2 row does not outrank a later provider's pass 1 row on a tie", {
+    # collapse_cascade_results() breaks ties with the last row, so the stacking
+    # order has to stay priority order even though pass 2 runs after pass 1.
+    florabr <- make_fake_provider(
+        "florabr", 1L, exact = "Something else",
+        lookup = list("Aus bus" = list(validation_status = "ambiguous"))
+    )
+    gbif <- make_fake_provider(
+        "gbif", 3L,
+        lookup = list("Aus bus" = list(validation_status = "ambiguous"))
+    )
+
+    res <- run_cascade("Aus bus", providers = list(florabr, gbif))
+
+    # gbif answered in pass 1 and florabr in pass 2, but gbif is the lower-priority
+    # fallback, so it must still win the tie exactly as it did before the split.
+    expect_equal(nrow(res), 1L)
+    expect_equal(res$validation_status, "ambiguous")
+    expect_equal(res$provider, "gbif")
 })
 
 test_that("a base without exact_match keeps being queried with everything", {
