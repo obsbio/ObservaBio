@@ -115,6 +115,98 @@ test_that("an unresolved name does not blow up the faunabr join", {
     expect_lt(nrow(raw), 100L)
 })
 
+# ---- br_map_check_result: deduplication and the fuzzy suggestion ---------------
+
+test_that("a name with an accepted and a synonym row at the same distance takes the accepted one", {
+    # Two authors published `Euterpe oleracea`, so the base carries both an
+    # Accepted and a Synonym row and check_names() returns both at Distance 0.
+    # Whichever came first used to win, and the order shifted with batch size.
+    rows <- data.frame(
+        input_name = c("Euterpe oleracea", "Euterpe oleracea"),
+        Spelling = "Correct",
+        Suggested_name = "Euterpe oleracea",
+        Distance = c(0, 0),
+        taxonomicStatus = c("Synonym", "Accepted"),
+        stringsAsFactors = FALSE
+    )
+    expect_equal(br_map_check_result(rows, "florabr")$validation_status, "accepted")
+    # ...and the same regardless of which row the base happened to emit first.
+    expect_equal(br_map_check_result(rows[2:1, ], "florabr")$validation_status, "accepted")
+})
+
+test_that("a closer suggestion still wins over a further accepted one", {
+    rows <- data.frame(
+        input_name = "Cedrela fissillis",
+        Spelling = "Probably_incorrect",
+        Suggested_name = c("Cedrela odorata", "Cedrela fissilis"),
+        Distance = c(4, 1),
+        taxonomicStatus = c("Accepted", "Synonym"),
+        stringsAsFactors = FALSE
+    )
+    got <- br_map_check_result(rows, "florabr")
+    expect_equal(got$scientificName, "Cedrela fissilis")
+})
+
+# ---- br_map_check_result: the fuzzy suggestion is what gets recorded ----------
+
+test_that("a misspelling records the suggested name, not the input", {
+    # Both bases spell the column `Suggested_name`. Reading it as "Suggested name"
+    # returned all-NA, so the mapper fell through to the input and every fuzzy hit
+    # kept its typo while being labelled `ambiguous`.
+    raw <- data.frame(
+        input_name = "Cedrela fissillis",
+        Spelling = "Probably_incorrect",
+        Suggested_name = "Cedrela fissilis",
+        Distance = 1,
+        taxonomicStatus = "Accepted",
+        stringsAsFactors = FALSE
+    )
+    got <- br_map_check_result(raw, "florabr")
+    expect_equal(got$query_name, "Cedrela fissillis")
+    expect_equal(got$scientificName, "Cedrela fissilis")
+    expect_equal(got$validation_status, "ambiguous")
+})
+
+test_that("a suggestion that changes the name's rank is refused", {
+    # agrep() answers a genus with a binomial, and those are different taxa, not
+    # near misses: Psidium is the guava genus, Pisidium is a freshwater clam.
+    raw <- data.frame(
+        input_name = c("Psidium", "Mycena", "Amona crassiflora"),
+        Spelling = "Probably_incorrect",
+        Suggested_name = c("Pisidium vile", "Mycetarotes acutus", "Annona crassiflora"),
+        Distance = c(2, 6, 1),
+        taxonomicStatus = "Accepted",
+        stringsAsFactors = FALSE
+    )
+    got <- br_map_check_result(raw, "florabr")
+    got <- got[match(c("Psidium", "Mycena", "Amona crassiflora"), got$query_name), ]
+    # The two genus inputs keep what the user wrote; only the real typo is fixed.
+    expect_equal(got$scientificName,
+                 c("Psidium", "Mycena", "Annona crassiflora"))
+})
+
+test_that("a name with no suggestion keeps the input as scientificName", {
+    raw <- data.frame(
+        input_name = "Zzz nonexistus",
+        Spelling = "Probably_incorrect",
+        Suggested_name = NA_character_,
+        Distance = NA_real_,
+        taxonomicStatus = NA_character_,
+        stringsAsFactors = FALSE
+    )
+    got <- br_map_check_result(raw, "florabr")
+    expect_equal(got$scientificName, "Zzz nonexistus")
+})
+
+test_that("the real base applies its fuzzy suggestion end to end", {
+    skip_if_not_installed("florabr")
+    p <- florabr_provider()
+    skip_if_not(p$is_available(), "florabr base not embedded (run data-raw/prep_florabr.R)")
+
+    res <- p$query("Cedrela fissillis")
+    expect_equal(res$scientificName, "Cedrela fissilis")
+})
+
 test_that("an unresolved name carries no taxonomic status", {
     p <- faunabr_provider()
     skip_if_not(p$is_available(), "faunabr base not embedded (run data-raw/prep_faunabr.R)")

@@ -401,11 +401,12 @@ build_cascade_placeholder <- function(query_names, status = "not_found") {
 #' (L-002). A provider that errors is logged and skipped (L-003). Results are
 #' collapsed to one best row per name.
 #'
-#' Before the loop, providers implementing the contract's optional `exact_match`
-#' are asked which names they hold verbatim, so a name is not pushed through a
-#' higher-priority base's fuzzy matcher when a lower-priority base already carries
-#' it. This only skips work that could not have changed the outcome — see the note
-#' at the pre-pass.
+#' Providers run in two passes, cheap before expensive (ADR-023). Pass 1 asks a
+#' base that publishes `exact_match` only for the names it holds verbatim, and
+#' asks a base without that index for everything. Pass 2 is the fuzzy fallback,
+#' reached only by names pass 1 left unresolved. Both passes keep priority order,
+#' and rows are stacked by priority before the collapse regardless of which pass
+#' produced them.
 #'
 #' @param query_names Character vector of raw scientific names.
 #' @param providers List of `ObservaBio_provider` objects. Defaults to the registry.
@@ -429,19 +430,16 @@ run_cascade <- function(query_names, providers = get_providers()) {
 
     providers <- providers[order(vapply(providers, function(p) p$priority, integer(1)))]
 
-    # Which names each base holds verbatim. A name a lower-priority base carries
-    # outright should not pay a higher-priority base's fuzzy pass first:
-    # check_names()/check_fauna_names() burn ~0.45 s per unmatched name inside
-    # agrep(), so a mixed flora/fauna list spends about half its time pushing
-    # animal names through florabr. Holding those back is safe — the name still
-    # reaches every provider it would have reached, and an exact match resolves
-    # `accepted` anyway; all that is skipped is a fuzzy pass that could only have
-    # produced an `ambiguous` row the collapse would then discard.
+    # Which names each base holds verbatim. This is what splits the cheap pass
+    # from the expensive one: check_names()/check_fauna_names() answer a name in
+    # this index from a hash (~0.04 s) but burn ~0.38 s per name outside it inside
+    # agrep(). On a real 1520-row list, 246 names sat outside both indexes and
+    # cost 187 s of agrep between them — for zero `accepted` and zero `synonym`.
     #
-    # Only a base that supplies `exact_match` can have names held back from it:
-    # without that index we cannot know whether it would have matched, so it keeps
-    # being queried with everything. That keeps the contract's promise intact — a
-    # new base is still one line, and it never silently loses priority.
+    # Only a base that supplies `exact_match` can have work deferred: without that
+    # index we cannot know whether it would have matched, so it keeps being asked
+    # for everything in pass 1. That keeps the contract's promise intact — a new
+    # base is still one line, and it never silently loses priority.
     exact <- lapply(providers, function(p) {
         if (!is.function(p$exact_match)) {
             return(character(0))
@@ -451,52 +449,94 @@ run_cascade <- function(query_names, providers = get_providers()) {
 
     remaining <- all_names
     collected <- list()
+    collected_at <- integer(0)
+    queried <- rep(list(character(0)), length(providers))
+    availability <- rep(NA, length(providers))
 
-    for (i in seq_along(providers)) {
-        provider <- providers[[i]]
-        if (length(remaining) == 0L) {
-            break
+    # Resolved on first use, not up front: a provider the cascade never reaches
+    # must not show up in `provider_failures`.
+    is_available <- function(i) {
+        if (!is.na(availability[[i]])) {
+            return(availability[[i]])
         }
-        available <- tryCatch(isTRUE(provider$is_available()), error = function(e) FALSE)
-        if (!available) {
-            failures[[length(failures) + 1L]] <- data.frame(
-                provider = provider$id, error = "provider unavailable",
+        ok <- tryCatch(isTRUE(providers[[i]]$is_available()), error = function(e) FALSE)
+        availability[[i]] <<- ok
+        if (!ok) {
+            failures[[length(failures) + 1L]] <<- data.frame(
+                provider = providers[[i]]$id, error = "provider unavailable",
                 stringsAsFactors = FALSE
             )
-            next
         }
+        ok
+    }
 
-        to_query <- remaining
-        if (is.function(provider$exact_match)) {
-            held_by_later <- as.character(unlist(exact[seq_along(providers) > i],
-                                                 use.names = FALSE))
-            to_query <- setdiff(remaining, setdiff(held_by_later, exact[[i]]))
-        }
+    # One provider call. A name is never sent to the same provider twice, so the
+    # two passes below cannot produce duplicate rows for it.
+    ask <- function(i, to_query) {
+        provider <- providers[[i]]
+        to_query <- setdiff(to_query, queried[[i]])
         if (length(to_query) == 0L) {
-            next
+            return(invisible(NULL))
         }
-
+        queried[[i]] <<- c(queried[[i]], to_query)
         matches <- tryCatch(provider$query(to_query), error = function(e) e)
         if (inherits(matches, "error")) {
-            failures[[length(failures) + 1L]] <- data.frame(
+            failures[[length(failures) + 1L]] <<- data.frame(
                 provider = provider$id, error = conditionMessage(matches),
                 stringsAsFactors = FALSE
             )
-            next
+            return(invisible(NULL))
         }
         if (is.null(matches) || !is.data.frame(matches) || nrow(matches) == 0L) {
-            next
+            return(invisible(NULL))
         }
-
         matches <- normalize_provider_result(matches, provider$id)
-        collected[[length(collected) + 1L]] <- matches
-
+        collected[[length(collected) + 1L]] <<- matches
+        collected_at <<- c(collected_at, i)
         accepted_names <- unique(matches$query_name[matches$validation_status == "accepted"])
-        remaining <- setdiff(remaining, accepted_names)
+        remaining <<- setdiff(remaining, accepted_names)
+        invisible(NULL)
     }
 
+    # Pass 1, cheap: a base that publishes an exact index is asked only for the
+    # names it holds verbatim (a hash hit). A base without that index is still
+    # asked everything, so opting out never costs it its priority.
+    for (i in seq_along(providers)) {
+        if (length(remaining) == 0L) {
+            break
+        }
+        if (!is_available(i)) {
+            next
+        }
+        ask(i, if (is.function(providers[[i]]$exact_match)) {
+            intersect(remaining, exact[[i]])
+        } else {
+            remaining
+        })
+    }
+
+    # Pass 2, expensive: the fuzzy fallback, reached only by names nothing cheaper
+    # resolved. A base outside its exact index can only answer `ambiguous` (its
+    # `Correct` verdict *is* the index), and `ambiguous` never outranks the
+    # `accepted`/`synonym` pass 1 already has — so deferring cannot change a
+    # result, only skip work. See ADR-023.
+    for (i in seq_along(providers)) {
+        if (length(remaining) == 0L) {
+            break
+        }
+        if (!is.function(providers[[i]]$exact_match) || !is_available(i)) {
+            next
+        }
+        held_by_later <- as.character(unlist(exact[seq_along(providers) > i],
+                                             use.names = FALSE))
+        ask(i, setdiff(remaining, setdiff(held_by_later, exact[[i]])))
+    }
+
+    # Stack in provider-priority order whatever order the passes ran in:
+    # collapse_cascade_results() breaks ties with the *last* row, so a pass 2 row
+    # must not outrank a later provider's pass 1 row.
     combined <- if (length(collected) > 0L) {
-        do.call(rbind, collected)
+        do.call(rbind, collected[order(collected_at)])
     } else {
         empty_canonical_result()
     }

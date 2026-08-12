@@ -1,7 +1,7 @@
 # Title: Brazilian Provider Helpers
 # Shared load + mapping for the embedded Flora BR / Fauna BR providers. Both
 # florabr::check_names() and faunabr::check_fauna_names() return the same
-# Spelling / Suggested name / taxonomicStatus / family shape (Saira
+# Spelling / Suggested_name / taxonomicStatus / family shape (Saira
 # normalize_brprovider_result), so one mapper serves both.
 
 .br_cache <- new.env(parent = emptyenv())
@@ -152,28 +152,45 @@ br_distribution <- function(provider_id, names, data, filename, has_biome) {
         toks <- split_distribution(vals)
         if (length(toks) == 0L) NA_character_ else paste(toks, collapse = ";")
     }
-    states <- vapply(key_in, function(k) {
-        hit <- which(spk == k)
-        if (length(hit) == 0L) NA_character_ else agg(states_col[hit])
-    }, FUN.VALUE = character(1), USE.NAMES = FALSE)
+    # One pass to group the base rows by species key, instead of re-scanning the
+    # whole ~150k key vector once per name (and twice per name when the base has
+    # biomes). `by_key` is a list of row indices, so the lookup is a hash hit.
+    by_key <- split(seq_along(spk), spk)
+    hits <- by_key[key_in]
+    gather <- function(column) {
+        vapply(hits, function(hit) {
+            if (is.null(hit) || length(hit) == 0L) NA_character_ else agg(column[hit])
+        }, FUN.VALUE = character(1), USE.NAMES = FALSE)
+    }
+    states <- gather(states_col)
     biomes <- if (!has_biome) {
         rep(NA_character_, length(names_chr))
     } else {
-        vapply(key_in, function(k) {
-            hit <- which(spk == k)
-            if (length(hit) == 0L) NA_character_ else agg(biome_col[hit])
-        }, FUN.VALUE = character(1), USE.NAMES = FALSE)
+        gather(biome_col)
     }
 
     data.frame(query_name = names_chr, states = states, biomes = biomes,
                stringsAsFactors = FALSE)
 }
 
+#' Count whitespace-separated tokens in a name (vectorized)
+#'
+#' Used to tell a spelling correction from a rank change: a suggestion with a
+#' different token count than the input is a different taxon, not a typo fix.
+#'
+#' @param x Character vector of names.
+#' @return Integer vector of token counts.
+#' @noRd
+count_name_tokens <- function(x) {
+    lengths(strsplit(trimws(as.character(x)), "\\s+"))
+}
+
 #' Map a florabr/faunabr check result to the canonical schema
 #'
 #' Base-specific mapping (Spelling + taxonomicStatus -> validation_status,
-#' "Suggested name" -> scientificName), deduplicating multiple suggestion rows
-#' per input by smallest `Distance`. Any canonical taxonomy columns present in
+#' `Suggested_name` -> scientificName), deduplicating multiple suggestion rows
+#' per input by smallest `Distance` and, on a tie, preferring the accepted row
+#' over a synonym one. Any canonical taxonomy columns present in
 #' the raw output (kingdom..genus, taxonID, taxonRank, vernacularName) pass
 #' through. The schema is finalized by `normalize_provider_result()`.
 #'
@@ -194,15 +211,25 @@ br_distribution <- function(provider_id, names, data, filename, has_biome) {
 #' @param data The embedded base, or NULL to skip.
 #' @param default_kingdom Kingdom to use when the base has no `kingdom` column
 #'   (faunabr is fauna-only, so `"Animalia"`).
+#' @param provider_id Provider id, so the normalized species key can come from the
+#'   [br_species_key()] cache instead of being recomputed. `NULL` computes it
+#'   inline, for callers passing a base that is not the cached one.
 #' @return `out` with taxonomy columns filled where the base had them.
 #' @noRd
-br_join_base_taxonomy <- function(out, data, default_kingdom = NA_character_) {
+br_join_base_taxonomy <- function(out, data, default_kingdom = NA_character_,
+                                  provider_id = NULL) {
     if (is.null(data) || !is.data.frame(data) || nrow(data) == 0L ||
         !"species" %in% names(data)) {
         return(out)
     }
-    idx <- match(normalize_for_matching(out$scientificName),
-                 normalize_for_matching(data$species))
+    # Normalizing all ~150k `species` values costs ~0.4 s and happens on every
+    # query; br_species_key() already caches exactly this vector per provider.
+    base_key <- if (is.null(provider_id)) {
+        normalize_for_matching(data$species)
+    } else {
+        br_species_key(provider_id, data)
+    }
+    idx <- match(normalize_for_matching(out$scientificName), base_key)
 
     # base column -> canonical column
     from_base <- c(taxonID = "id", kingdom = "kingdom", phylum = "phylum",
@@ -241,14 +268,29 @@ br_map_check_result <- function(raw_df, provider_id, data = NULL,
     }
     names(raw_df) <- trimws(names(raw_df))
 
-    # Keep the closest suggestion per input_name.
+    # Keep the closest suggestion per input_name, accepted row first on a tie.
     if ("Distance" %in% names(raw_df) && "input_name" %in% names(raw_df)) {
         dist_num <- suppressWarnings(as.numeric(raw_df[["Distance"]]))
         dist_num[is.na(dist_num)] <- Inf
         raw_df[["Distance"]] <- dist_num
+        # A binomial published by two authors has two base rows — one Accepted, one
+        # Synonym (`Euterpe oleracea Mart.` vs `Euterpe oleracea Engel`) — and
+        # check_names() returns both at Distance 0. Ranking on Distance alone left
+        # the winner to whatever order the merge inside check_names produced, which
+        # shifts with the size of the batch: the same name came back `accepted` in
+        # one run and `synonym` in another. Break the tie on the status instead.
+        tax_raw <- if ("taxonomicStatus" %in% names(raw_df)) {
+            tolower(as.character(raw_df[["taxonomicStatus"]]))
+        } else {
+            rep(NA_character_, nrow(raw_df))
+        }
+        is_synonym <- !is.na(tax_raw) & grepl("synonym", tax_raw, fixed = TRUE)
         split_list <- split(seq_len(nrow(raw_df)), raw_df[["input_name"]])
         keep_rows <- vapply(split_list, function(idxs) {
-            if (length(idxs) == 1L) idxs[[1L]] else idxs[[which.min(raw_df[["Distance"]][idxs])]]
+            if (length(idxs) == 1L) {
+                return(idxs[[1L]])
+            }
+            idxs[order(raw_df[["Distance"]][idxs], is_synonym[idxs])][[1L]]
         }, FUN.VALUE = integer(1))
         raw_df <- raw_df[keep_rows, , drop = FALSE]
         rownames(raw_df) <- NULL
@@ -273,8 +315,20 @@ br_map_check_result <- function(raw_df, provider_id, data = NULL,
         "not_found"
     }, FUN.VALUE = character(1))
 
-    suggested <- col("Suggested name")
-    scientific_name <- ifelse(is.na(suggested) | !nzchar(suggested), query_name, suggested)
+    # Both bases spell this column `Suggested_name`. Reading it as "Suggested name"
+    # silently yielded all-NA, so every fuzzy hit fell back to the *misspelled*
+    # input: `Cedrela fissillis` stayed misspelled even though check_names had
+    # answered `Cedrela fissilis` at Distance 1.
+    suggested <- col("Suggested_name")
+    # ...but only accept a suggestion that is a *spelling* correction. agrep() is
+    # happy to answer a genus with a binomial, and those answers are not near
+    # misses, they are different taxa: `Psidium` (guava) -> `Pisidium vile` (a
+    # clam), `Mycena` (a fungus) -> `Mycetarotes acutus` (an ant). A correction
+    # that changes the rank of the name is not a correction, so require the token
+    # count to match — `Amona crassiflora` -> `Annona crassiflora` still passes.
+    usable <- !is.na(suggested) & nzchar(suggested) &
+        count_name_tokens(suggested) == count_name_tokens(query_name)
+    scientific_name <- ifelse(usable, suggested, query_name)
 
     out <- data.frame(
         query_name = query_name,
@@ -292,7 +346,7 @@ br_map_check_result <- function(raw_df, provider_id, data = NULL,
         }
     }
 
-    out <- br_join_base_taxonomy(out, data, default_kingdom)
+    out <- br_join_base_taxonomy(out, data, default_kingdom, provider_id = provider_id)
 
     normalize_provider_result(out, provider_id)
 }
