@@ -15,7 +15,7 @@
 #' @return List with `dir` (extraction dir), `shp` (path to the `.shp`) and
 #'   `files` (all extracted paths).
 #' @noRd
-unzip_shapefile <- function(zip_path, exdir = tempfile("validabio_shp")) {
+unzip_shapefile <- function(zip_path, exdir = tempfile("ObservaBio_shp")) {
     if (!file.exists(zip_path)) {
         stop(sprintf("Shapefile .zip not found: %s", zip_path))
     }

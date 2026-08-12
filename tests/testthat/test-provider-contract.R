@@ -48,7 +48,7 @@ test_that("normalize_provider_result requires query_name", {
 
 test_that("new_provider validates and stamps class", {
     p <- new_provider("p", "Prov", "test", 1L, query = function(names, data = NULL) empty_canonical_result())
-    expect_s3_class(p, "validabio_provider")
+    expect_s3_class(p, "ObservaBio_provider")
     expect_equal(p$priority, 1L)
     expect_error(new_provider("p", "Prov", "test", 1L, query = "notafun"), "must be a function")
 })

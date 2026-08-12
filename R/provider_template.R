@@ -153,7 +153,7 @@ template_distribution <- function(names, data = NULL) {
 #'   load         = function() invisible(NULL),
 #'   version      = function() "<API> (live)"
 #'
-#' @return A `validabio_provider`.
+#' @return A `ObservaBio_provider`.
 #' @noRd
 template_provider <- function() {
     new_provider(

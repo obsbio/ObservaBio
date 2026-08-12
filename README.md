@@ -8,7 +8,7 @@ geográfica** (buffer de 10 km + ocorrências GBIF + estado/bioma →
 `distributionFlag`), mostra um **mapa interativo** e gera **dois Excel** (dados
 padronizados + auditoria).
 
-O pacote R se chama `validabio`. A aplicação é apresentada como **ZHOUSE** na
+O pacote R se chama `ObservaBio`. A aplicação é apresentada como **ZHOUSE** na
 interface.
 
 ## Requisitos

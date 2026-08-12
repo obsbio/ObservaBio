@@ -104,7 +104,7 @@ gbif_map_backbone <- function(raw, queried) {
 
 #' Construct the GBIF backbone provider
 #'
-#' @return A `validabio_provider` (priority 3, type "global").
+#' @return A `ObservaBio_provider` (priority 3, type "global").
 #' @noRd
 gbif_provider <- function() {
     new_provider(

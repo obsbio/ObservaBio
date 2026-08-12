@@ -106,7 +106,7 @@ gbif_api_get <- function(segments, query = NULL) {
                 req <- do.call(httr2::req_url_query, c(list(req), query))
             }
             req <- httr2::req_timeout(req, GBIF_API_TIMEOUT_S)
-            req <- httr2::req_user_agent(req, "validabio R package")
+            req <- httr2::req_user_agent(req, "ObservaBio R package")
             req <- httr2::req_error(req, is_error = function(resp) FALSE)
             resp <- httr2::req_perform(req)
             if (httr2::resp_status(resp) != 200L) {

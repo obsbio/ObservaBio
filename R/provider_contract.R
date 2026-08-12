@@ -120,7 +120,7 @@ normalize_provider_result <- function(df, provider) {
 #'   `run_cascade()` skip a higher-priority base's expensive fuzzy pass for a name
 #'   a lower-priority base already carries. `NULL` (the default) simply opts the
 #'   base out — it is then queried with everything, exactly as before.
-#' @return An object of class "validabio_provider".
+#' @return An object of class "ObservaBio_provider".
 #' @noRd
 new_provider <- function(id, label, type, priority, query,
                          is_available = function() TRUE,
@@ -143,6 +143,6 @@ new_provider <- function(id, label, type, priority, query,
         distribution = distribution,
         exact_match = exact_match
     )
-    class(provider) <- "validabio_provider"
+    class(provider) <- "ObservaBio_provider"
     provider
 }

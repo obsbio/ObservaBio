@@ -4,7 +4,7 @@
 
 #' Detect a stale R session (loaded namespace older than the installed package)
 #'
-#' After a user reinstalls validabio without restarting R, the running session
+#' After a user reinstalls ObservaBio without restarting R, the running session
 #' keeps executing the previously loaded namespace while the on-disk package is
 #' newer. Under `pkgload::load_all()` both resolve to the same version, so dev
 #' sessions are never flagged.
@@ -12,16 +12,16 @@
 #' @param loaded,installed Version strings; default to the live lookups.
 #' @return List with `stale` (logical), `loaded`, `installed` (character).
 #' @noRd
-validabio_session_is_stale <- function(loaded = NULL, installed = NULL) {
+ObservaBio_session_is_stale <- function(loaded = NULL, installed = NULL) {
     if (is.null(loaded)) {
         loaded <- tryCatch(
-            as.character(getNamespaceVersion("validabio")),
+            as.character(getNamespaceVersion("ObservaBio")),
             error = function(e) NA_character_
         )
     }
     if (is.null(installed)) {
         installed <- tryCatch(
-            as.character(utils::packageVersion("validabio")),
+            as.character(utils::packageVersion("ObservaBio")),
             error = function(e) NA_character_
         )
     }
@@ -33,11 +33,11 @@ validabio_session_is_stale <- function(loaded = NULL, installed = NULL) {
 #'
 #' @return Character scalar, e.g. "0.0.0.9000", or NA on lookup failure.
 #' @noRd
-validabio_running_version <- function() {
+ObservaBio_running_version <- function() {
     tryCatch(
-        as.character(getNamespaceVersion("validabio")),
+        as.character(getNamespaceVersion("ObservaBio")),
         error = function(e) tryCatch(
-            as.character(utils::packageVersion("validabio")),
+            as.character(utils::packageVersion("ObservaBio")),
             error = function(e2) NA_character_
         )
     )

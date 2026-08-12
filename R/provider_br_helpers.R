@@ -15,7 +15,7 @@
 #' @return Path (possibly non-existent — check with `file.exists`).
 #' @noRd
 br_extdata_path <- function(filename) {
-    path <- system.file("extdata", filename, package = "validabio")
+    path <- system.file("extdata", filename, package = "ObservaBio")
     if (nzchar(path)) {
         return(path)
     }

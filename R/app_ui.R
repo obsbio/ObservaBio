@@ -12,7 +12,7 @@
 #' the fixed filename. Mirrors run_app()'s www resolution.
 #' @noRd
 www_asset <- function(rel) {
-    www <- system.file("app/www", package = "validabio")
+    www <- system.file("app/www", package = "ObservaBio")
     if (www == "") www <- "inst/app/www"
     f <- file.path(www, rel)
     href <- paste0("www/", rel)
@@ -101,7 +101,7 @@ step_header <- function(n, step, title, note = NULL) {
 #' @noRd
 app_ui <- function() {
     bslib::page(
-        title = "ZHOUSE — Padronização Darwin Core",
+        title = "ObservaBio — Padronização Darwin Core",
         theme = bslib::bs_theme(
             version = 5,
             bg = "#F7F3E9", fg = "#222826",

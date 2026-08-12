@@ -8,7 +8,7 @@
 
 #' The scientific-name column that anchors header detection (Darwin Core).
 #' @noRd
-.validabio_name_key <- function() "scientificName"
+.ObservaBio_name_key <- function() "scientificName"
 
 #' Count occurrences of a literal delimiter in one line.
 #' @noRd
@@ -88,7 +88,7 @@ read_xlsx_grid <- function(path) {
 #' @param max_scan Rows to scan from the top.
 #' @return Integer header-row index, or `NA_integer_`.
 #' @noRd
-detect_header_row <- function(grid, key = .validabio_name_key(), max_scan = 30L) {
+detect_header_row <- function(grid, key = .ObservaBio_name_key(), max_scan = 30L) {
     n <- min(nrow(grid), max_scan)
     for (i in seq_len(n)) {
         cells <- trimws(as.character(unlist(grid[i, ], use.names = FALSE)))
@@ -109,7 +109,7 @@ detect_header_row <- function(grid, key = .validabio_name_key(), max_scan = 30L)
 #'   `pt_labels` (the row directly above the header — the PT-BR labels of the
 #'   double-header model — or `NULL` when the header is the first row).
 #' @noRd
-read_validabio_table <- function(path, key = .validabio_name_key()) {
+read_ObservaBio_table <- function(path, key = .ObservaBio_name_key()) {
     if (!file.exists(path)) {
         stop(sprintf("Spreadsheet not found: %s", path))
     }

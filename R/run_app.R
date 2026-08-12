@@ -12,7 +12,7 @@ run_app <- function(...) {
     # Allow large uploads (species spreadsheet + shapefile .zip).
     options(shiny.maxRequestSize = 500 * 1024^2)
 
-    www_path <- system.file("app/www", package = "validabio")
+    www_path <- system.file("app/www", package = "ObservaBio")
     if (www_path == "") {
         www_path <- "inst/app/www"
     }
