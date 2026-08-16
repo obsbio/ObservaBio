@@ -51,3 +51,10 @@ Biodiversidade Darwincore*
 /zhouse-specs/
 /zhouse-correcoes/
 /zhouse_area_teste.zip
+
+# Landing page (Quarto) — build output, never committed.
+/website/_site/
+/website/.quarto/
+
+/.quarto/
+**/*.quarto_ipynb

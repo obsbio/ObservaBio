@@ -1,0 +1,30 @@
+project:
+  type: website
+  output-dir: _site
+  resources:
+    - assets/
+
+website:
+  title: "ObservaBio"
+  description: >-
+    Aplicativo R/Shiny que resolve nomes científicos em bases nacionais e
+    internacionais, cruza o status de conservação e as listas de exóticas
+    invasoras, e confere pelas ocorrências do GBIF se a espécie faz sentido
+    onde você diz que ela está.
+  favicon: assets/img/favicon.svg
+  open-graph: true
+  page-navigation: false
+  # Página única: sem navbar, sem sidebar, sem busca. O site-url entra quando a
+  # hospedagem no GitHub Pages estiver definida — até lá, tudo em caminho
+  # relativo para que `_site/index.html` abra direto do disco.
+
+format:
+  html:
+    lang: pt-BR
+    theme: theme.scss
+    toc: false
+    anchor-sections: false
+    smooth-scroll: true
+    link-external-newwindow: true
+    include-in-header: assets/head.html
+    include-after-body: assets/foot.html
