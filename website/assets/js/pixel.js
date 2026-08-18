@@ -169,18 +169,30 @@
       });
     }
 
-    /* Where the .frame cross-fade is in its cycle, `ahead` ms from now. Asking
-     * the animation itself beats counting from a clock of our own: the two only
-     * agree if they share an origin, and ours starts when the section scrolls
-     * into view, not when the page paints. */
+    /* Where the .frame cross-fade is in its cycle, `ahead` ms from now, or null
+     * when the browser hands over no animation to read. Only the animation
+     * itself carries a usable origin: a clock of our own starts when the
+     * section scrolls into view, and performance.now() starts at the time
+     * origin, so neither one agrees with a cycle that begins at first style
+     * resolution. Without that reading there is no phase, and the caller has
+     * to decide what to do with nothing rather than act on a wrong number. */
     var clockEl = pipe.querySelector('.cell-out .frame-a');
 
+    // The element carries one animation today, but a second one added later
+    // must not be mistaken for the cross-fade, so it is picked by name.
+    function fadeAnim() {
+      if (!clockEl || !clockEl.getAnimations) return null;
+      var found = null;
+      clockEl.getAnimations().forEach(function (a) {
+        if (a.animationName === 'pipe-fade') found = a;
+      });
+      return found;
+    }
+
     function phaseAt(ahead) {
-      var anim = clockEl && clockEl.getAnimations ? clockEl.getAnimations()[0] : null;
-      var t = (anim && anim.currentTime != null)
-        ? anim.currentTime
-        : (window.performance && performance.now ? performance.now() : 0);
-      return (t + ahead) % CYCLE;
+      var anim = fadeAnim();
+      if (!anim || typeof anim.currentTime !== 'number') return null;
+      return (anim.currentTime + ahead) % CYCLE;
     }
 
     /* Which row raises an alert on which record is the page's business, not
@@ -203,7 +215,11 @@
     function verdict(lane) {
       var alert = alerts[lane];
       if (!alert) return DONE;
-      var phase = phaseAt(HOLD + geom[lane][OUT].ms);
+      // The hold is already spent when this runs, so the look-ahead is the
+      // outbound leg alone. Counting the hold again pushes the reading past
+      // the cross-fade and lands the pixel in the colour of the wrong frame.
+      var phase = phaseAt(geom[lane][OUT].ms);
+      if (phase === null) return DONE; // no clock to trust, so raise no alert
       var showing = (phase > CYCLE * 0.47 && phase < CYCLE * 0.95) ? 'b' : 'a';
       return alert.when === showing ? alert.colour : DONE;
     }
