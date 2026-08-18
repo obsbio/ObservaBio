@@ -22,8 +22,12 @@ anchor-sections: false
     <h1 class="hero-title">Observa<span class="accent">Bio</span></h1>
     <span class="eyebrow">Aplicativo R/Shiny · PT-BR</span>
     <div class="hero-actions">
-      <!-- TODO: trocar por a URL do app publicado quando a publicação for definida. -->
-      <a class="btn btn-primary" href="#" aria-disabled="true">Abrir o ObservaBio</a>
+      <!-- Sem destino ainda, então o botão é um controle desabilitado de
+           verdade: não recebe foco e não responde ao clique. Um <a href="#">
+           continuaria clicável e só rolaria a página para o topo.
+           TODO: trocar por <a class="btn btn-primary" href="URL"> quando a
+           publicação for definida. -->
+      <button class="btn btn-primary" type="button" disabled>Abrir o ObservaBio</button>
       <a class="btn btn-ghost" href="#distribuicao">Ver como funciona</a>
     </div>
     <p class="hero-note">O endereço do app entra aqui assim que a publicação for definida.</p>

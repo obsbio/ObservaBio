@@ -66,7 +66,11 @@ $enable-shadows: false;
      points at a brand token, so it restates the map legend of the app itself
      (docs/design.md §Mapa) rather than carrying hexes of its own. The hero
      portrait is client artwork, a raster, and inherits none of this. */
+  --pel-ink:    var(--text-primary);
   --pel-coat:   var(--secondary);
+  --pel-shade:  var(--secondary-ink);
+  --pel-light:  var(--bg-main);
+  --pel-eye:    var(--warning);
   --pel-area:   var(--primary);
   --pel-buffer: var(--sand);
 
@@ -326,11 +330,26 @@ code {
   gap: 0.5rem;
   padding: 0.8rem 1.4rem;
   border-radius: var(--radius);
+  /* A <button> inherits none of the page's type, and the class has to look the
+     same on both elements it is used on. */
+  font-family: inherit;
   font-weight: 600;
   font-size: 0.95rem;
+  line-height: 1.2;
   text-decoration: none;
+  cursor: pointer;
   border: 2px solid var(--primary);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* A disabled control still matches :hover, so the flat, dimmed state has to be
+   stated here and the hover states have to exclude it. Otherwise the button
+   lifts under the cursor and promises an action it will not perform. */
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-primary {
@@ -338,7 +357,16 @@ code {
   color: var(--bg-main);
   box-shadow: var(--shift) var(--shift) 0 var(--sand);
 
-  &:hover, &:focus-visible {
+  /* Bootstrap paints `.btn-primary:disabled` from its own `--bs-btn-disabled-*`
+     variables, and that selector outranks the plain `.btn-primary` above. The
+     colours are restated at the same rank so the muted button stays green. */
+  &:disabled {
+    background: var(--primary);
+    color: var(--bg-main);
+    border-color: var(--primary);
+  }
+
+  &:hover:not(:disabled), &:focus-visible {
     color: var(--bg-main);
     background: var(--primary-hover);
     transform: translate(2px, 2px);
@@ -350,7 +378,7 @@ code {
   background: transparent;
   color: var(--primary);
 
-  &:hover, &:focus-visible {
+  &:hover:not(:disabled), &:focus-visible {
     background: rgba(30, 70, 32, 0.06);
     color: var(--primary-hover);
   }
