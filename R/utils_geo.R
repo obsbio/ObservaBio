@@ -1,10 +1,11 @@
 # Title: Geographic Verification Helpers (part 1)
 # Pure sf helpers for the geographic verification (SPEC §8, week 5): read the
-# uploaded shapefile, build a 10 km buffer in a metric CRS, and find which
-# UF(s)/biome(s) the operation area falls in, then cross-check those against the
-# UF/biome distribution florabr/faunabr carry per species. No Shiny here, and no
-# GBIF occurrences (that is utils_gbif_occ.R + the final distributionFlag, week
-# 6). The unzip step is upstream in utils_upload.R::unzip_shapefile().
+# uploaded area (shapefile or KML), build a 10 km buffer in a metric CRS, and
+# find which UF(s)/biome(s) the operation area falls in, then cross-check those
+# against the UF/biome distribution florabr/faunabr carry per species. No Shiny
+# here, and no GBIF occurrences (that is utils_gbif_occ.R + the final
+# distributionFlag, week 6). The unpack step is upstream in
+# utils_upload.R::unpack_area_files().
 
 .geo_cache <- new.env(parent = emptyenv())
 .BR_UF_BIOMES_RDS <- "br_uf_biomes.rds"
@@ -36,6 +37,76 @@ geo_read_shapefile <- function(path, quiet = TRUE) {
         stop("Shapefile has no CRS (.prj missing or unreadable); cannot reproject for the 10 km buffer.")
     }
     area
+}
+
+#' Read the operation area from a `.kml`
+#'
+#' Reads every layer and joins them. GDAL turns each KML folder into its own
+#' layer, so `sf::st_read()` alone would take the first folder and drop the rest
+#' with only a warning — a Google Earth file with "Talhoes" and "Reserva" would
+#' silently lose the reserve.
+#'
+#' Two normalizations follow the read. KML carries altitude on every vertex, so
+#' `st_zm()` drops Z before the geometry reaches `st_union()`. And when the file
+#' holds polygons, only the polygons survive: a stray placemark mixed into the
+#' area would make `st_union()` return one geometry per type, and
+#' [metric_crs_for()] would then pick the CRS from a single part's centroid. A
+#' file with no polygon at all keeps whatever it has — a 10 km buffer around a
+#' point is still a valid operation area.
+#'
+#' @param path Path to a `.kml` file.
+#' @param quiet Passed to `sf::st_read`.
+#' @return An `sf` object with a defined CRS.
+#' @noRd
+geo_read_kml <- function(path, quiet = TRUE) {
+    if (!file.exists(path)) {
+        stop(sprintf("KML path not found: %s", path))
+    }
+    layers <- sf::st_layers(path)$name
+    if (length(layers) == 0L) {
+        stop(sprintf("KML has no readable layer: %s", path))
+    }
+
+    parts <- lapply(layers, function(layer) {
+        geom <- tryCatch(
+            sf::st_geometry(sf::st_read(path, layer = layer, quiet = quiet)),
+            error = function(e) NULL
+        )
+        if (is.null(geom) || length(geom) == 0L) NULL else sf::st_zm(geom, drop = TRUE)
+    })
+    parts <- Filter(Negate(is.null), parts)
+    if (length(parts) == 0L) {
+        stop(sprintf("KML has no geometry: %s", path))
+    }
+    geom <- do.call(c, parts)
+
+    polygons <- as.character(sf::st_geometry_type(geom)) %in%
+        c("POLYGON", "MULTIPOLYGON")
+    if (any(polygons)) {
+        geom <- geom[polygons]
+    }
+    # KML is WGS84 by definition of the format, so a missing CRS cannot be
+    # ambiguous here the way a shapefile without a .prj is.
+    if (is.na(sf::st_crs(geom))) {
+        sf::st_crs(geom) <- 4326
+    }
+    sf::st_sf(geometry = geom)
+}
+
+#' Read the operation area from any accepted source
+#'
+#' Dispatches on the extension: a `.kml` goes to [geo_read_kml()], and everything
+#' else (a directory or a `.shp`) to [geo_read_shapefile()]. A `.kmz` never
+#' reaches here — [unpack_kmz()] already extracted the `.kml` at upload time.
+#'
+#' @param path Directory, `.shp` path, or `.kml` path.
+#' @return An `sf` object with a defined CRS.
+#' @noRd
+geo_read_area <- function(path) {
+    if (tolower(tools::file_ext(path)) == "kml") {
+        return(geo_read_kml(path))
+    }
+    geo_read_shapefile(path)
 }
 
 #' Pick a metric CRS (SIRGAS 2000 / UTM zone) for a geometry

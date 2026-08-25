@@ -1,6 +1,6 @@
-# Title: Study-Area Linking (locality <-> shapefile)
+# Title: Study-Area Linking (locality <-> area file)
 # Pure helpers that decide WHICH study area each uploaded record belongs to. One
-# `.zip` is one area; the user links each area to one or more `locality` values
+# file is one area; the user links each area to one or more `locality` values
 # in Step 1 (mod_upload). The geographic verification then runs per area, over
 # only the species that area actually claims — so the distributionFlag becomes a
 # per-(species, area) answer instead of a per-species one. Records the user did
@@ -9,7 +9,7 @@
 
 #' Normalize an area/locality label to a matching key
 #'
-#' Thin wrapper over [normalize_for_matching()]: the link between a shapefile's
+#' Thin wrapper over [normalize_for_matching()]: the link between an area file's
 #' name and a `locality` value must survive case, accents and punctuation
 #' ("RPPN Rio do Brasil" == "rppn_rio_do_brasil").
 #' @noRd
@@ -35,12 +35,12 @@ area_slug <- function(x) {
 #' Shiny's `fileInput` replaces its selection on every upload, so sending a
 #' second area in a second action would silently drop the first. The module
 #' therefore keeps what it has and merges each upload in: an incoming area whose
-#' slug is already held **replaces** it (re-sending a corrected `.zip` is the
+#' slug is already held **replaces** it (re-sending a corrected file is the
 #' natural way to fix an area, and replacing keeps its row in place), and
 #' anything new is appended in upload order.
 #'
 #' @param held List of areas already accumulated.
-#' @param incoming List of areas from this upload (from [unzip_shapefiles()]).
+#' @param incoming List of areas from this upload (from [unpack_area_files()]).
 #' @return The merged list, held order first.
 #' @noRd
 merge_areas <- function(held, incoming) {

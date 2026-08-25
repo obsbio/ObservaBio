@@ -1,5 +1,5 @@
-# Pure sf geo helpers (SPEC §8 part 1): read shapefile, 10 km buffer, area
-# UF/biome lookup, and the state/biome distribution cross-check.
+# Pure sf geo helpers (SPEC §8 part 1): read the area (shapefile or KML), 10 km
+# buffer, area UF/biome lookup, and the state/biome distribution cross-check.
 
 skip_if_not_installed("sf")
 
@@ -29,6 +29,116 @@ test_that("geo_read_shapefile reads a shapefile and keeps its CRS", {
 
 test_that("geo_read_shapefile errors on a missing path", {
     expect_error(geo_read_shapefile(tempfile("nope")), "not found")
+})
+
+# ---- geo_read_kml -----------------------------------------------------------
+
+# A KML the way Google Earth writes one: folders, and altitude on every vertex.
+# The `folders` argument is a list of placemark bodies, one list per folder.
+write_kml <- function(folders) {
+    path <- tempfile(fileext = ".kml")
+    body <- vapply(seq_along(folders), function(i) {
+        paste0(
+            "<Folder><name>F", i, "</name>",
+            paste(folders[[i]], collapse = ""),
+            "</Folder>"
+        )
+    }, character(1))
+    writeLines(c(
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
+        body,
+        "</Document></kml>"
+    ), path)
+    path
+}
+
+kml_polygon <- function(cx, cy, half = 0.05, z = 850) {
+    ring <- sprintf(
+        "%f,%f,%f %f,%f,%f %f,%f,%f %f,%f,%f %f,%f,%f",
+        cx - half, cy - half, z, cx + half, cy - half, z,
+        cx + half, cy + half, z, cx - half, cy + half, z,
+        cx - half, cy - half, z
+    )
+    paste0("<Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>",
+           ring, "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>")
+}
+
+kml_point <- function(cx, cy, z = 850) {
+    sprintf("<Placemark><Point><coordinates>%f,%f,%f</coordinates></Point></Placemark>",
+            cx, cy, z)
+}
+
+test_that("geo_read_kml reads every folder, not just the first", {
+    # GDAL turns each KML folder into its own layer, and sf::st_read() would take
+    # layer 1 and drop the rest with only a warning.
+    path <- write_kml(list(kml_polygon(-47.9, -15.8), kml_polygon(-47.5, -15.8)))
+    on.exit(unlink(path), add = TRUE)
+
+    read <- geo_read_kml(path)
+    expect_s3_class(read, "sf")
+    expect_equal(nrow(read), 2L)
+    expect_equal(sf::st_crs(read)$epsg, 4326L)
+})
+
+test_that("geo_read_kml drops the Z dimension KML carries", {
+    path <- write_kml(list(kml_polygon(-47.9, -15.8)))
+    on.exit(unlink(path), add = TRUE)
+
+    coords <- sf::st_coordinates(geo_read_kml(path))
+    expect_false("Z" %in% colnames(coords))
+    expect_false("M" %in% colnames(coords))
+})
+
+test_that("geo_read_kml keeps only the polygons when the file has any", {
+    # A stray placemark next to the area would otherwise make st_union() return
+    # one geometry per type, and metric_crs_for() would read a single centroid.
+    path <- write_kml(list(c(kml_polygon(-47.9, -15.8), kml_point(-47.0, -15.8))))
+    on.exit(unlink(path), add = TRUE)
+
+    read <- geo_read_kml(path)
+    expect_equal(nrow(read), 1L)
+    expect_equal(as.character(unique(sf::st_geometry_type(read))), "POLYGON")
+})
+
+test_that("geo_read_kml keeps the points when the file has no polygon", {
+    path <- write_kml(list(kml_point(-47.9, -15.8)))
+    on.exit(unlink(path), add = TRUE)
+
+    read <- geo_read_kml(path)
+    expect_equal(as.character(unique(sf::st_geometry_type(read))), "POINT")
+})
+
+test_that("geo_read_kml errors on a missing path", {
+    expect_error(geo_read_kml(tempfile(fileext = ".kml")), "not found")
+})
+
+test_that("a KML area buffers in the same metric CRS as a shapefile area", {
+    path <- write_kml(list(kml_polygon(-47.9, -15.8)))
+    on.exit(unlink(path), add = TRUE)
+
+    buffered <- geo_buffer(geo_read_kml(path))
+    expect_equal(buffered$crs_metric, 31983L)
+    expect_equal(sf::st_crs(buffered$buffer)$epsg, 4326L)
+    expect_true(all(sf::st_contains(buffered$buffer, buffered$area, sparse = FALSE)))
+})
+
+# ---- geo_read_area ----------------------------------------------------------
+
+test_that("geo_read_area routes a .kml to the KML reader", {
+    path <- write_kml(list(kml_polygon(-47.9, -15.8)))
+    on.exit(unlink(path), add = TRUE)
+
+    expect_equal(nrow(geo_read_area(path)), 1L)
+})
+
+test_that("geo_read_area routes a directory to the shapefile reader", {
+    dir <- tempfile("area_read")
+    dir.create(dir)
+    on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+    sf::st_write(make_area(-47.9, -15.8), file.path(dir, "area.shp"), quiet = TRUE)
+
+    expect_s3_class(geo_read_area(dir), "sf")
 })
 
 # ---- metric_crs_for ---------------------------------------------------------
