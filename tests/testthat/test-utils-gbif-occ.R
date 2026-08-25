@@ -195,6 +195,49 @@ test_that("gbif_occ_fetch_species tags a genuine empty result as not-failed", {
     expect_false(isTRUE(attr(pts, "gbif_error")))
 })
 
+# ---- gbif_occ_query_blocks --------------------------------------------------
+
+# A buffer of N detached parcels, spread far enough that one polygon cannot
+# cover them tightly.
+scattered_buffer <- function(n, spread = 1) {
+    set.seed(1)
+    pts <- lapply(seq_len(n), function(i) {
+        sf::st_point(c(-47 + stats::runif(1, 0, spread), -15 + stats::runif(1, 0, spread)))
+    })
+    geo_buffer(sf::st_sf(id = seq_len(n), geometry = sf::st_sfc(pts, crs = 4326)))$buffer
+}
+
+test_that("gbif_occ_query_blocks leaves a compact buffer as one block", {
+    blocks <- gbif_occ_query_blocks(sample_buffer())
+    expect_length(blocks, 1L)
+})
+
+test_that("gbif_occ_query_blocks splits a fragmented buffer and loses nothing", {
+    buf <- scattered_buffer(12L, spread = 1.5)
+    # One polygon over all twelve parcels over-fetches many times over.
+    expect_gt(.gbif_occ_overfetch(sf::st_union(sf::st_geometry(buf))),
+              .GBIF_QUERY_MAX_OVERFETCH)
+
+    blocks <- gbif_occ_query_blocks(buf)
+    expect_gt(length(blocks), 1L)
+    # The blocks still cover the buffer. The tolerance is relative because
+    # st_union on lon/lat leaves square-metre residue on a shared edge.
+    union <- sf::st_union(do.call(c, blocks))
+    exact <- sf::st_union(sf::st_geometry(buf))
+    residue <- as.numeric(sf::st_area(sf::st_sym_difference(union, exact)))
+    expect_lt(residue / as.numeric(sf::st_area(exact)), 1e-5)
+})
+
+test_that("gbif_occ_query_blocks holds every block under the over-fetch ceiling", {
+    for (block in gbif_occ_query_blocks(scattered_buffer(12L, spread = 1.5))) {
+        expect_lte(.gbif_occ_overfetch(block), .GBIF_QUERY_MAX_OVERFETCH)
+    }
+})
+
+test_that("gbif_occ_query_blocks costs nothing for an empty buffer", {
+    expect_length(gbif_occ_query_blocks(sf::st_sfc(sf::st_polygon(), crs = 4326)), 0L)
+})
+
 # ---- gbif_occ_in_buffer -----------------------------------------------------
 
 test_that("gbif_occ_in_buffer with no names never touches the fetch seam", {
@@ -288,4 +331,81 @@ test_that("gbif_occ_presence reports per-species presence as a named logical", {
 
     empty <- gbif_occ_presence(gbif_occ_parse(NULL), c("Sp one"))
     expect_equal(empty, c("Sp one" = FALSE))
+})
+
+# ---- gbif_occ_in_buffer over query blocks -----------------------------------
+
+test_that("gbif_occ_in_buffer sends one request per block per species", {
+    reset_occ_cache()
+    buf <- scattered_buffer(12L, spread = 1.5)
+    n_blocks <- length(gbif_occ_query_blocks(buf))
+    expect_gt(n_blocks, 1L)
+
+    calls <- 0L
+    stub_fetch <- function(name, wkt, max_records, page_size) {
+        calls <<- calls + 1L
+        gbif_occ_parse(NULL)
+    }
+    gbif_occ_in_buffer("Sp one", buf, fetch = stub_fetch, sleep = function(s) invisible())
+    expect_equal(calls, n_blocks)
+})
+
+test_that("gbif_occ_in_buffer keeps a point that only one block returns", {
+    reset_occ_cache()
+    buf <- scattered_buffer(12L, spread = 1.5)
+    # The point sits in the first parcel, so only the block covering it answers.
+    target <- sf::st_coordinates(sf::st_centroid(
+        suppressWarnings(sf::st_cast(sf::st_union(sf::st_geometry(buf)), "POLYGON"))[1L]
+    ))
+    stub_fetch <- function(name, wkt, max_records, page_size) {
+        inside <- lengths(sf::st_intersects(
+            sf::st_sfc(sf::st_point(target[1L, c("X", "Y")]), crs = 4326),
+            sf::st_as_sfc(wkt, crs = 4326)
+        )) > 0L
+        if (!inside) {
+            return(gbif_occ_parse(NULL))
+        }
+        data.frame(species = name, decimalLongitude = target[1L, "X"],
+                   decimalLatitude = target[1L, "Y"], datasetKey = "ds-1",
+                   stringsAsFactors = FALSE)
+    }
+    out <- gbif_occ_in_buffer("Sp one", buf, fetch = stub_fetch,
+                              sleep = function(s) invisible())
+    expect_equal(nrow(out), 1L)
+    expect_equal(out$datasetKey, "ds-1")
+})
+
+test_that("gbif_occ_in_buffer drops a record two overlapping blocks both return", {
+    reset_occ_cache()
+    buf <- scattered_buffer(12L, spread = 1.5)
+    centre <- sf::st_coordinates(sf::st_centroid(
+        suppressWarnings(sf::st_cast(sf::st_union(sf::st_geometry(buf)), "POLYGON"))[1L]
+    ))
+    # Every block answers with the same record, as overlapping query polygons do.
+    stub_fetch <- function(name, wkt, max_records, page_size) {
+        data.frame(species = name, decimalLongitude = centre[1L, "X"],
+                   decimalLatitude = centre[1L, "Y"], datasetKey = "ds-dup",
+                   stringsAsFactors = FALSE)
+    }
+    out <- gbif_occ_in_buffer("Sp one", buf, fetch = stub_fetch,
+                              sleep = function(s) invisible())
+    expect_equal(nrow(out), 1L)
+})
+
+test_that("gbif_occ_in_buffer marks a species failed when any one block fails", {
+    reset_occ_cache()
+    buf <- scattered_buffer(12L, spread = 1.5)
+    seen <- 0L
+    # The first block answers cleanly, the second cannot be checked. Reporting
+    # "absent" here would hide whatever the failed block covered.
+    stub_fetch <- function(name, wkt, max_records, page_size) {
+        seen <<- seen + 1L
+        out <- gbif_occ_parse(NULL)
+        attr(out, "gbif_error") <- seen == 2L
+        out
+    }
+    out <- gbif_occ_in_buffer("Sp x", buf, fetch = stub_fetch,
+                              sleep = function(s) invisible())
+    expect_equal(attr(out, "failed"), "Sp x")
+    expect_equal(nrow(out), 0L)
 })
