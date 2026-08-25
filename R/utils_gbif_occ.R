@@ -8,25 +8,30 @@
 # from "genuinely absent" instead of collapsing both to zero points. The final
 # distributionFlag classifier is classify_distribution_flag() in utils_geo.R.
 #
-# GBIF geometry limit: occ_search/occ_data reject WKT that is too large or too
-# complex (self-intersections, too many vertices, wrong winding). We do NOT send
-# the raw buffer ring. gbif_occ_wkt() coarsens it to a query polygon that is
-# guaranteed to fit and to *contain* the buffer (simplify -> convex hull ->
-# bbox), then gbif_occ_in_buffer() refines the returned points against the exact
-# buffer with sf::st_intersects. So the query polygon only trims transfer; the
-# "within 10 km" decision is always the exact sf test (ADR-009).
+# GBIF geometry limit: the WKT travels in the query string, and GBIF cuts the
+# request line at 4 KB. Past that the API answers 400 and rgbif reports it as
+# "500 - Server error" (LESSONS L-022). So we do NOT send the raw buffer ring.
+# gbif_occ_wkt() coarsens it to a query polygon that is guaranteed to fit and to
+# *contain* the buffer (buffer -> metric simplify -> bbox), then
+# gbif_occ_in_buffer() refines the returned points against the exact buffer with
+# sf::st_intersects. So the query polygon only trims transfer; the "within 10 km"
+# decision is always the exact sf test (ADR-009).
 
 .gbif_occ_cache <- new.env(parent = emptyenv())
 
-# Vertex ceiling for the query polygon. GBIF tolerates far more, but a farm-scale
-# buffer under this cap keeps the WKT small and well inside the API limit.
-.GBIF_WKT_MAX_VERTICES <- 300L
+# Character ceiling for the query polygon's WKT. GBIF cuts the request line at
+# 4 KB, and percent-encoding grows the WKT by about a third on the way into the
+# URL, so 4 KB of request line is roughly 2.7 KB of WKT. 2000 leaves room for
+# rgbif's other query parameters and for its own headers.
+#
+# Measure characters, not vertices: the two do not convert. The old 300-vertex
+# cap passed a 5224-character WKT (a 6864-character URL) straight into the 400.
+.GBIF_WKT_MAX_CHARS <- 2000L
 
-#' Count the vertices of an sf/sfc geometry
-#' @noRd
-.geo_n_vertices <- function(geom) {
-    nrow(sf::st_coordinates(geom))
-}
+# Simplify tolerances for the query polygon, in metres, tightest first. A 10 km
+# buffer at 500 m keeps the shape within about 8 percent of the exact area, so
+# the ladder gives up fidelity slowly.
+.GBIF_WKT_SIMPLIFY_M <- c(200, 500, 1000, 2000, 5000)
 
 #' Force a single (multi)polygon's rings to the GBIF winding (CCW exterior)
 #'
@@ -64,44 +69,59 @@
 
 #' Build a GBIF-safe query polygon (WKT) from the 10 km buffer
 #'
-#' Coarsens the buffer until it fits `max_vertices`, preferring shape fidelity:
-#' the buffer itself if it is already small, otherwise a topology-preserving
-#' `sf::st_simplify` at growing tolerances, otherwise the convex hull, and — as a
-#' last resort — the bounding box. Every candidate is a superset of the buffer,
-#' so the exact-buffer refine downstream never loses a real occurrence.
+#' Coarsens the buffer until its WKT fits `max_chars`, preferring shape fidelity:
+#' the buffer itself if it already fits, then growing simplify tolerances, then
+#' the bounding box. Every candidate *contains* the buffer, so the exact-buffer
+#' refine downstream never loses a real occurrence — a coarser candidate only
+#' over-fetches (ADR-009).
+#'
+#' Two traps this navigates. `sf::st_simplify` does nothing useful on lon/lat, so
+#' the simplification runs in a metric CRS. And Douglas-Peucker cuts corners
+#' *inward*, which would make the candidate a subset: the result is widened again
+#' by the same tolerance, whose value bounds the error Douglas-Peucker can
+#' introduce. `sf::st_covers` confirms containment per candidate, because a
+#' tolerance large enough to swallow a small parcel would otherwise cut the
+#' buffer in silence.
+#'
+#' The bounding box closes the ladder: it always contains the buffer and its WKT
+#' is around 120 characters, so some candidate always fits. It is last because it
+#' over-fetches badly for an area with detached parcels — the box spans the gap
+#' between them, and a species with more than `max_records` hits inside the box
+#' could crowd out the ones actually near the area.
 #'
 #' @param buffer An `sfc`/`sf` polygon (the `buffer` slot from `geo_buffer()`).
-#' @param max_vertices Vertex ceiling for the emitted polygon.
+#' @param max_chars Character ceiling for the emitted WKT.
 #' @return A WKT string (EPSG:4326, CCW), or `NA_character_` if `buffer` is empty.
 #' @noRd
-gbif_occ_wkt <- function(buffer, max_vertices = .GBIF_WKT_MAX_VERTICES) {
+gbif_occ_wkt <- function(buffer, max_chars = .GBIF_WKT_MAX_CHARS) {
     geom <- sf::st_make_valid(sf::st_union(sf::st_geometry(buffer)))
     if (length(geom) == 0L || all(sf::st_is_empty(geom))) {
         return(NA_character_)
     }
     geom <- sf::st_transform(geom, 4326)
 
-    candidate <- geom
-    if (.geo_n_vertices(candidate) > max_vertices) {
-        for (tol in c(0.001, 0.005, 0.01, 0.05, 0.1)) {
-            simplified <- sf::st_make_valid(
-                sf::st_simplify(geom, dTolerance = tol, preserveTopology = TRUE)
-            )
-            if (!all(sf::st_is_empty(simplified)) &&
-                .geo_n_vertices(simplified) <= max_vertices) {
-                candidate <- simplified
-                break
-            }
-            candidate <- simplified
+    as_wkt <- function(g) sf::st_as_text(.geo_force_ccw(g)[[1L]])
+    wkt <- as_wkt(geom)
+    if (nchar(wkt) <= max_chars) {
+        return(wkt)
+    }
+
+    metric <- metric_crs_for(geom)
+    exact <- sf::st_transform(geom, metric)
+    for (tol in .GBIF_WKT_SIMPLIFY_M) {
+        candidate <- sf::st_make_valid(sf::st_buffer(
+            sf::st_simplify(exact, dTolerance = tol), dist = tol, nQuadSegs = 2
+        ))
+        if (all(sf::st_is_empty(candidate)) ||
+            !sf::st_covers(candidate, exact, sparse = FALSE)[1L, 1L]) {
+            next
+        }
+        wkt <- as_wkt(sf::st_transform(candidate, 4326))
+        if (nchar(wkt) <= max_chars) {
+            return(wkt)
         }
     }
-    if (all(sf::st_is_empty(candidate)) || .geo_n_vertices(candidate) > max_vertices) {
-        candidate <- sf::st_convex_hull(geom)
-    }
-    if (all(sf::st_is_empty(candidate)) || .geo_n_vertices(candidate) > max_vertices) {
-        candidate <- sf::st_as_sfc(sf::st_bbox(geom))
-    }
-    sf::st_as_text(.geo_force_ccw(candidate)[[1L]])
+    as_wkt(sf::st_as_sfc(sf::st_bbox(geom)))
 }
 
 #' One live GBIF occurrence page (the only network line)
