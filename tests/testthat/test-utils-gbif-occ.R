@@ -18,26 +18,64 @@ reset_occ_cache <- function() {
 
 # ---- gbif_occ_wkt -----------------------------------------------------------
 
-test_that("gbif_occ_wkt returns a WKT polygon that fits the vertex cap", {
+# The query polygon must CONTAIN the buffer: correctness downstream is the exact
+# refine, so a coarser candidate may over-fetch but must never cut the buffer.
+# The buffer is shrunk by 5 m first, because st_as_text() writes 7 significant
+# digits (about 1 m) and the round trip would otherwise fail on rounding alone.
+expect_contains_buffer <- function(wkt, buffer) {
+    query <- sf::st_as_sfc(wkt, crs = 4326)
+    buf <- sf::st_union(sf::st_geometry(buffer))
+    metric <- metric_crs_for(buf)
+    shrunk <- sf::st_transform(
+        sf::st_buffer(sf::st_transform(buf, metric), dist = -5), 4326
+    )
+    expect_true(sf::st_covers(query, shrunk, sparse = FALSE)[1L, 1L])
+}
+
+test_that("gbif_occ_wkt returns a WKT polygon that fits the character budget", {
     buf <- sample_buffer()
-    wkt <- gbif_occ_wkt(buf, max_vertices = 300L)
+    wkt <- gbif_occ_wkt(buf)
     expect_type(wkt, "character")
     expect_match(wkt, "POLYGON")
-
-    back <- sf::st_as_sfc(wkt, crs = 4326)
-    expect_lte(nrow(sf::st_coordinates(back)), 300L)
+    expect_lte(nchar(wkt), .GBIF_WKT_MAX_CHARS)
+    expect_contains_buffer(wkt, buf)
 })
 
-test_that("gbif_occ_wkt simplifies a many-vertex buffer under the cap", {
+test_that("gbif_occ_wkt simplifies a many-vertex buffer under the budget", {
     pt <- sf::st_sfc(sf::st_point(c(-47.9, -15.8)), crs = 4326)
-    # A high-resolution disk: ~4 * 400 = 1600 vertices, well over the cap.
+    # A high-resolution disk: ~4 * 400 = 1600 vertices, far over the budget.
     dense <- sf::st_buffer(sf::st_transform(pt, 31983), dist = 10000, nQuadSegs = 400)
     dense <- sf::st_transform(dense, 4326)
-    expect_gt(nrow(sf::st_coordinates(dense)), 300L)
+    expect_gt(nchar(sf::st_as_text(dense[[1L]])), .GBIF_WKT_MAX_CHARS)
 
-    wkt <- gbif_occ_wkt(dense, max_vertices = 300L)
-    back <- sf::st_as_sfc(wkt, crs = 4326)
-    expect_lte(nrow(sf::st_coordinates(back)), 300L)
+    wkt <- gbif_occ_wkt(dense)
+    expect_lte(nchar(wkt), .GBIF_WKT_MAX_CHARS)
+    expect_contains_buffer(wkt, dense)
+})
+
+test_that("gbif_occ_wkt fits a multi-part buffer under the budget", {
+    # One study area with two detached parcels — a farm plus its reserve, or two
+    # KML folders. Its buffer is a 2-part MULTIPOLYGON, which used to emit a
+    # 5224-character WKT: a 6864-character URL, past GBIF's 4 KB request line
+    # (LESSONS L-022). The old cap counted vertices and let it through.
+    parcels <- sf::st_sf(id = 1:2, geometry = sf::st_sfc(
+        sf::st_point(c(-47.0, -15.0)), sf::st_point(c(-46.0, -15.0)), crs = 4326
+    ))
+    buf <- geo_buffer(parcels)$buffer
+    expect_length(unclass(sf::st_geometry(buf)[[1L]]), 2L)
+    expect_gt(nchar(sf::st_as_text(sf::st_geometry(buf)[[1L]])), .GBIF_WKT_MAX_CHARS)
+
+    wkt <- gbif_occ_wkt(buf)
+    expect_lte(nchar(wkt), .GBIF_WKT_MAX_CHARS)
+    expect_contains_buffer(wkt, buf)
+})
+
+test_that("gbif_occ_wkt falls back to the bounding box for a tight budget", {
+    # A budget no simplify tolerance can meet forces the end of the ladder.
+    buf <- sample_buffer()
+    wkt <- gbif_occ_wkt(buf, max_chars = 200L)
+    expect_lte(nchar(wkt), 200L)
+    expect_contains_buffer(wkt, buf)
 })
 
 test_that("gbif_occ_wkt returns NA for an empty geometry", {
