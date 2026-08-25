@@ -1,13 +1,14 @@
 # Title: Upload Module (Step 1 — Enviar)
 # Reactive bridge only: reads the species table via read_ObservaBio_table() and
-# validates the shapefile archives via unzip_shapefiles() (pure helpers). Returns
+# validates the area files via unpack_area_files() (pure helpers). Returns
 # `list(data, iucn_key, go)` — the parsed upload reactive, the optional
 # session-only IUCN key (ADR-005), plus a "Continuar" advance signal the
 # app_server observes to move to Step 2. UI text is PT-BR (SPEC §2.1).
 #
-# One `.zip` is one study area. When the sheet has a `locality` column, the user
-# links each area to the localities it covers in the mapping panel below the
-# uploads; only linked records are geo-verified (see utils_geo_areas.R).
+# One file is one study area — a shapefile `.zip`, a `.kmz`, or a `.kml`. When
+# the sheet has a `locality` column, the user links each area to the localities
+# it covers in the mapping panel below the uploads. Only linked records are
+# geo-verified (see utils_geo_areas.R).
 
 #' Upload module UI (Step 1)
 #'
@@ -22,9 +23,10 @@ mod_upload_ui <- function(id) {
             step_header(1, "Enviar", "Enviar arquivos"),
             shiny::tags$p(
                 class = "step-lede",
-                "Carregue a planilha de espécies e, opcionalmente, os shapefiles ",
-                "das áreas de operação — um ", shiny::tags$code(".zip"),
-                " por área. O separador e a coluna ",
+                "Carregue a planilha de espécies e, opcionalmente, as áreas de ",
+                "operação — um arquivo por área, em shapefile ",
+                shiny::tags$code(".zip"), ", ", shiny::tags$code(".kmz"),
+                " ou ", shiny::tags$code(".kml"), ". O separador e a coluna ",
                 shiny::tags$code("scientificName"),
                 " são detectados automaticamente."
             ),
@@ -43,9 +45,10 @@ mod_upload_ui <- function(id) {
                     upload_card(
                         ns("shapefile"), badge = "geo", icon_name = "map",
                         title = "Áreas de estudo",
-                        formats = "shapefiles .zip · opcional",
-                        hint = "um .zip por área · pode enviar uma de cada vez",
-                        accept = ".zip", status_id = ns("shapefile_status"),
+                        formats = "shapefile .zip · .kmz · .kml · opcional",
+                        hint = "um arquivo por área · pode enviar uma de cada vez",
+                        accept = c(".zip", ".kmz", ".kml"),
+                        status_id = ns("shapefile_status"),
                         multiple = TRUE
                     )
                 ),
@@ -143,7 +146,7 @@ upload_card <- function(input_id, badge, icon_name, title, formats, hint,
 #'
 #' @param id Module id.
 #' @return `list(data, iucn_key, go)`: `data` is a reactive with `records`,
-#'   `model_cols`, `pt_labels`, `areas` (NULL until a valid `.zip`);
+#'   `model_cols`, `pt_labels`, `areas` (NULL until a valid area file);
 #'   `iucn_key` is a reactive with the optional session-only IUCN key; `go` is a
 #'   reactive firing on the "Continuar" click.
 #' @noRd
@@ -165,11 +168,11 @@ mod_upload_server <- function(id) {
             )
         })
 
-        # One `.zip` per study area, named after the archive. Areas ACCUMULATE
+        # One file per study area, named after the file. Areas ACCUMULATE
         # across uploads: `fileInput` replaces its selection every time, so
         # sending the second area in a second action would otherwise drop the
-        # first one silently (merge_areas() holds what we have). A bad archive
-        # is reported by name and skipped; the valid ones still go through.
+        # first one silently (merge_areas() holds what we have). A bad file is
+        # reported by name and skipped, and the valid ones still go through.
         areas_rv <- shiny::reactiveVal(list())
 
         shiny::observeEvent(input$shapefile, {
@@ -177,10 +180,10 @@ mod_upload_server <- function(id) {
             if (is.null(files) || nrow(files) == 0L) {
                 return()
             }
-            parsed <- unzip_shapefiles(files$datapath, files$name)
+            parsed <- unpack_area_files(files$datapath, files$name)
             if (length(parsed$errors) > 0L) {
                 shiny::showNotification(
-                    paste("Shapefile inválido —",
+                    paste("Área inválida —",
                           paste(sprintf("%s: %s", names(parsed$errors), parsed$errors),
                                 collapse = " · ")),
                     type = "error", duration = 8
@@ -300,7 +303,7 @@ mod_upload_server <- function(id) {
         })
 
         # The upload's own read-back: a success chip once the file parses, the
-        # standing caveat otherwise (the shapefile is optional).
+        # standing caveat otherwise (the area file is optional).
         ok_chip <- function(text) {
             shiny::tags$span(
                 class = "badge-pill flag-confirmed",
@@ -327,7 +330,7 @@ mod_upload_server <- function(id) {
             if (is.null(areas)) {
                 return(shiny::tags$p(
                     class = "upload-card__note",
-                    "Sem shapefile a verificação geográfica fica limitada."
+                    "Sem uma área a verificação geográfica fica limitada."
                 ))
             }
             ok_chip(sprintf("%d %s", length(areas),

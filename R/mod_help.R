@@ -56,11 +56,16 @@ help_modal <- function() {
                 1, "Enviar",
                 shiny::tags$p(
                     "Envie a ", shiny::tags$b("planilha de espécies"),
-                    " (.xlsx, .csv, .tsv ou .txt) e os ",
-                    shiny::tags$b("shapefiles das áreas de estudo"),
-                    " — um .zip por área, cada um com .shp, .shx, .dbf e .prj."
+                    " (.xlsx, .csv, .tsv ou .txt) e as ",
+                    shiny::tags$b("áreas de estudo"),
+                    " — um arquivo por área."
                 ),
                 shiny::tags$ul(
+                    shiny::tags$li(
+                        shiny::tags$b("Formatos de área"), " — shapefile em .zip ",
+                        "(com .shp, .shx, .dbf e .prj dentro), ou .kmz e .kml, ",
+                        "que é o que o Google Earth exporta."
+                    ),
                     shiny::tags$li(
                         "A planilha só precisa ter uma coluna ",
                         shiny::tags$code("scientificName"),
@@ -69,7 +74,7 @@ help_modal <- function() {
                     ),
                     shiny::tags$li(
                         shiny::tags$b("Vínculo com locality"), " — com mais de uma área, ",
-                        "ligue cada shapefile aos valores de ",
+                        "ligue cada arquivo aos valores de ",
                         shiny::tags$code("locality"), " que ele cobre. Cada registro é ",
                         "verificado contra a área da sua localidade, e só os registros ",
                         "vinculados entram na verificação geográfica. Com uma única área ",

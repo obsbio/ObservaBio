@@ -57,17 +57,21 @@ providers_distribution <- function(names, providers = get_providers()) {
     )
 }
 
-#' Resolve the operation-area geometry from the upload's shapefile slot
+#' Resolve the operation-area geometry from the upload's area slot
 #'
-#' Accepts an `sf`/`sfc` (already read — used in tests), the `unzip_shapefile()`
-#' list (uses its `dir`), or a directory / `.shp` path.
+#' Accepts an `sf`/`sfc` (already read — used in tests), an [unpack_area_files()]
+#' entry, an `unzip_shapefile()` list, or a directory / `.shp` / `.kml` path.
+#' `source` wins over `dir`: a `.kmz` extracts to a directory with a `.kml` and
+#' no `.shp`, so the directory alone cannot say which file to open.
 #' @noRd
 geo_resolve_area <- function(shapefile) {
     if (inherits(shapefile, "sf") || inherits(shapefile, "sfc")) {
         return(shapefile)
     }
     path <- NULL
-    if (is.list(shapefile) && !is.null(shapefile$dir)) {
+    if (is.list(shapefile) && !is.null(shapefile$source)) {
+        path <- shapefile$source
+    } else if (is.list(shapefile) && !is.null(shapefile$dir)) {
         path <- shapefile$dir
     } else if (is.character(shapefile) && length(shapefile) == 1L) {
         path <- shapefile
@@ -75,15 +79,16 @@ geo_resolve_area <- function(shapefile) {
     if (is.null(path)) {
         return(NULL)
     }
-    geo_read_shapefile(path)
+    geo_read_area(path)
 }
 
 #' Resolve the upload's study areas into a named, read list (pure)
 #'
-#' One `.zip` is one area. Accepts either the multi-area upload slot (a list of
-#' `name`/`dir`/`localities` entries) or a single bare area — an `sf`/`sfc`, a
-#' path, or one `unzip_shapefile()` list — which becomes a one-element list. An
-#' area whose geometry cannot be read is skipped rather than sinking the run.
+#' One uploaded file is one area. Accepts either the multi-area upload slot (a
+#' list of `name`/`dir`/`source`/`localities` entries) or a single bare area — an
+#' `sf`/`sfc`, a path, or one `unzip_shapefile()` list — which becomes a
+#' one-element list. An area whose geometry cannot be read is skipped rather than
+#' sinking the run.
 #'
 #' @param areas Upload `areas` slot, or a single area in any accepted form.
 #' @return List of `list(name, localities, geom)`, or `NULL` when nothing
@@ -336,8 +341,8 @@ geo_combine_areas <- function(per) {
 
 #' Run the full geographic verification for one upload, over N areas (SPEC §8)
 #'
-#' Each uploaded `.zip` is one study area, verified independently against only
-#' the species its own records claim (the `locality` link, see
+#' Each uploaded file is one study area, verified independently against only the
+#' species its own records claim (the `locality` link, see
 #' [assign_record_areas()]). Returns `NULL` when no area resolves — the caller
 #' then leaves `distributionFlag` empty and the map empty (pre-geo behaviour).
 #'

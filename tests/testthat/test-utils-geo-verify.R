@@ -376,3 +376,64 @@ test_that("geo_name_map covers a fully pre-validated sheet (empty cascade)", {
     expect_equal(nrow(m), 2L)
     expect_setequal(m$scientificName, c("Geophagus brasiliensis", "Astyanax"))
 })
+
+# ---- geo_resolve_area: source wins over dir ---------------------------------
+
+# A .kmz extracts to a directory holding a .kml and no .shp, so the directory
+# alone cannot say which file to open. The upload entry carries `source`.
+write_kml_area <- function(dir, cx = -47, cy = -22, half = 0.05) {
+    path <- file.path(dir, "doc.kml")
+    ring <- sprintf(
+        "%f,%f,850 %f,%f,850 %f,%f,850 %f,%f,850 %f,%f,850",
+        cx - half, cy - half, cx + half, cy - half, cx + half, cy + half,
+        cx - half, cy + half, cx - half, cy - half
+    )
+    writeLines(c(
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>',
+        paste0("<Polygon><outerBoundaryIs><LinearRing><coordinates>", ring,
+               "</coordinates></LinearRing></outerBoundaryIs></Polygon>"),
+        "</Placemark></Document></kml>"
+    ), path)
+    path
+}
+
+test_that("geo_resolve_area reads the KML an unpacked .kmz left in `source`", {
+    dir <- tempfile("kmz_area")
+    dir.create(dir)
+    on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+    kml <- write_kml_area(dir)
+
+    read <- geo_resolve_area(list(name = "Reserva", dir = dir, source = kml))
+    expect_s3_class(read, "sf")
+    expect_equal(sf::st_crs(read)$epsg, 4326L)
+
+    # Without `source` the directory scan looks for a .shp and finds none.
+    expect_error(geo_resolve_area(list(name = "Reserva", dir = dir)), "No .shp file")
+})
+
+test_that("geo_resolve_areas resolves a shapefile area and a KML area together", {
+    shp_dir <- tempfile("shp_area")
+    kml_dir <- tempfile("kml_area")
+    dir.create(shp_dir)
+    dir.create(kml_dir)
+    on.exit(unlink(c(shp_dir, kml_dir), recursive = TRUE), add = TRUE)
+    sf::st_write(
+        sf::st_sf(id = 1L, geometry = sf::st_sfc(
+            sf::st_polygon(list(rbind(c(-47.1, -22.1), c(-47, -22.1),
+                                      c(-47, -22), c(-47.1, -22), c(-47.1, -22.1)))),
+            crs = 4326
+        )),
+        file.path(shp_dir, "area.shp"), quiet = TRUE
+    )
+    kml <- write_kml_area(kml_dir, cx = -46.5, cy = -21.5)
+
+    resolved <- geo_resolve_areas(list(
+        list(name = "Fazenda", dir = shp_dir, source = file.path(shp_dir, "area.shp")),
+        list(name = "Reserva", dir = kml_dir, source = kml)
+    ))
+    expect_length(resolved, 2L)
+    expect_equal(vapply(resolved, function(a) a$name, character(1)),
+                 c("Fazenda", "Reserva"))
+    expect_true(all(vapply(resolved, function(a) inherits(a$geom, "sf"), logical(1))))
+})
