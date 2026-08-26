@@ -33,28 +33,34 @@
 # the ladder gives up fidelity slowly.
 .GBIF_WKT_SIMPLIFY_M <- c(200, 500, 1000, 2000, 5000)
 
-#' Force a single (multi)polygon's rings to the GBIF winding (CCW exterior)
+#' Force a (multi)polygon's rings to the GBIF winding
 #'
-#' GBIF returns the *complement* of a clockwise polygon, which would silently
-#' drop every real point after the exact-buffer refine. sf does not guarantee a
-#' winding, so we reorient here. Holes are left as-is (the query polygon is a
-#' coarse superset; hole precision does not matter — the refine is exact).
+#' GBIF reads a clockwise exterior ring as *everything outside it*, so a
+#' wrongly wound polygon returns the complement and the exact-buffer refine then
+#' drops every real point — silent zero results. It also rejects a polygon whose
+#' **interior** ring runs anticlockwise ("Polygon with anticlockwise interior
+#' ring"), which fails the lookup outright. sf guarantees neither winding, so
+#' both are set here: exterior anticlockwise, holes clockwise.
 #'
 #' @param geom An `sfc` with one POLYGON or MULTIPOLYGON.
-#' @return The same geometry with CCW exterior ring(s).
+#' @return The same geometry, exterior ring(s) CCW and interior ring(s) CW.
 #' @noRd
 .geo_force_ccw <- function(geom) {
-    ring_ccw <- function(ring) {
+    orient <- function(ring, ccw) {
         # Shoelace: negative signed area == clockwise in x/y (lon/lat) space.
         x <- ring[, 1L]
         y <- ring[, 2L]
         i <- seq_len(nrow(ring) - 1L)
         signed2 <- sum(x[i] * y[i + 1L] - x[i + 1L] * y[i])
-        if (signed2 < 0) ring[rev(seq_len(nrow(ring))), , drop = FALSE] else ring
+        wrong <- if (ccw) signed2 < 0 else signed2 > 0
+        if (wrong) ring[rev(seq_len(nrow(ring))), , drop = FALSE] else ring
     }
     reorient <- function(poly) {
-        poly[[1L]] <- ring_ccw(poly[[1L]])
-        poly
+        rings <- unclass(poly)
+        for (i in seq_along(rings)) {
+            rings[[i]] <- orient(rings[[i]], ccw = i == 1L)
+        }
+        rings
     }
     g <- sf::st_geometry(geom)[[1L]]
     if (inherits(g, "POLYGON")) {
@@ -122,6 +128,76 @@ gbif_occ_wkt <- function(buffer, max_chars = .GBIF_WKT_MAX_CHARS) {
         }
     }
     as_wkt(sf::st_as_sfc(sf::st_bbox(geom)))
+}
+
+#' Ceiling on how much bigger the query polygon may be than what it covers
+#'
+#' The query polygon is a coarse superset, and the exact refine drops whatever
+#' falls outside the buffer. That is only safe while the polygon stays close to
+#' the buffer: GBIF returns at most `max_records` per species, in no particular
+#' order, so a polygon many times too big can fill the page with distant points
+#' and hide the ones actually near the area. The result is a silent "sem registro
+#' próximo" for a species recorded 2 km away (LESSONS L-023).
+.GBIF_QUERY_MAX_OVERFETCH <- 1.5
+
+#' How much bigger a query polygon is than the geometry it must cover
+#' @noRd
+.gbif_occ_overfetch <- function(geom) {
+    wkt <- gbif_occ_wkt(geom)
+    if (is.na(wkt)) {
+        return(Inf)
+    }
+    covered <- as.numeric(sf::st_area(sf::st_union(sf::st_geometry(geom))))
+    if (!is.finite(covered) || covered <= 0) {
+        return(Inf)
+    }
+    as.numeric(sf::st_area(sf::st_as_sfc(wkt, crs = 4326))) / covered
+}
+
+#' Split a buffer into query blocks, each tight enough to query on its own
+#'
+#' A buffer of one compact area is one block, which is the whole upload for most
+#' users — they pay nothing for this. A buffer of detached parcels (a farm plus
+#' its reserve, a dozen fragments) cannot be covered by one tight polygon: the
+#' single polygon spans the gaps and over-fetches, measured at 11x for twelve
+#' parcels. Grouping neighbouring parcels holds every block near
+#' `.GBIF_QUERY_MAX_OVERFETCH` and costs about one request per five parcels
+#' instead of one per parcel.
+#'
+#' Parts are visited west to east so a block collects neighbours, and a block
+#' closes as soon as adding the next part would push it past the ceiling.
+#'
+#' @param buffer The `buffer` slot from `geo_buffer()`.
+#' @param max_overfetch Area ratio a block may not exceed.
+#' @return List of `sfc` blocks whose union is the buffer.
+#' @noRd
+gbif_occ_query_blocks <- function(buffer, max_overfetch = .GBIF_QUERY_MAX_OVERFETCH) {
+    geom <- sf::st_make_valid(sf::st_union(sf::st_geometry(buffer)))
+    if (length(geom) == 0L || all(sf::st_is_empty(geom))) {
+        return(list())
+    }
+    parts <- suppressWarnings(sf::st_cast(geom, "POLYGON"))
+    if (length(parts) <= 1L) {
+        return(list(geom))
+    }
+
+    centroids <- suppressWarnings(sf::st_coordinates(sf::st_centroid(parts)))
+    order_ew <- order(centroids[, "X"], centroids[, "Y"])
+
+    blocks <- list()
+    current <- integer(0)
+    for (i in order_ew) {
+        trial <- c(current, i)
+        if (length(current) > 0L &&
+            .gbif_occ_overfetch(sf::st_union(parts[trial])) > max_overfetch) {
+            blocks[[length(blocks) + 1L]] <- sf::st_union(parts[current])
+            current <- i
+        } else {
+            current <- trial
+        }
+    }
+    blocks[[length(blocks) + 1L]] <- sf::st_union(parts[current])
+    blocks
 }
 
 #' One live GBIF occurrence page (the only network line)
@@ -206,15 +282,20 @@ gbif_occ_query_page <- function(name, wkt, start, limit) {
 #' the several shapes `occ_data` returns: the `$data` tibble, a bare data frame,
 #' or the "no data" sentinel.
 #'
+#' `key` is GBIF's own occurrence identifier. It is carried so overlapping query
+#' polygons can be deduplicated by record identity: two distinct observations
+#' often share a rounded coordinate and a dataset, so coordinates cannot tell a
+#' repeat apart from a neighbour (LESSONS L-024).
+#'
 #' @param res An `rgbif::occ_data` result (or its `$data`).
-#' @return Data frame `species`/`decimalLongitude`/`decimalLatitude`/`datasetKey`
-#'   (zero rows when nothing usable is present).
+#' @return Data frame `species`/`decimalLongitude`/`decimalLatitude`/
+#'   `datasetKey`/`key` (zero rows when nothing usable is present).
 #' @noRd
 gbif_occ_parse <- function(res) {
     empty <- data.frame(
         species = character(0), decimalLongitude = numeric(0),
         decimalLatitude = numeric(0), datasetKey = character(0),
-        stringsAsFactors = FALSE
+        key = character(0), stringsAsFactors = FALSE
     )
     dat <- if (is.list(res) && !is.data.frame(res) && "data" %in% names(res)) {
         res$data
@@ -239,6 +320,7 @@ gbif_occ_parse <- function(res) {
         decimalLongitude = lon[keep],
         decimalLatitude = lat[keep],
         datasetKey = as.character(col("datasetKey"))[keep],
+        key = as.character(col("key"))[keep],
         stringsAsFactors = FALSE
     )
 }
@@ -298,6 +380,29 @@ gbif_occ_fetch_species <- function(name, wkt, max_records = 300L,
     })
 }
 
+#' Drop a record two overlapping query polygons both returned
+#'
+#' The blocks are disjoint, but their coarse query polygons are not, so one
+#' record can come back from two blocks and double a map marker. Identity is
+#' GBIF's `key`: deduplicating on coordinates would delete distinct observations
+#' that share a rounded coordinate and a dataset (LESSONS L-024). Without a
+#' usable `key` — a test stub, an older cached table — the whole row is the only
+#' identity available.
+#' @noRd
+.gbif_occ_dedupe <- function(points) {
+    if (nrow(points) == 0L) {
+        return(points)
+    }
+    id <- if ("key" %in% names(points) && !anyNA(points$key) && all(nzchar(points$key))) {
+        points$key
+    } else {
+        do.call(paste, c(points, sep = "\r"))
+    }
+    out <- points[!duplicated(id), , drop = FALSE]
+    rownames(out) <- NULL
+    out
+}
+
 #' Keep only points that fall inside the exact 10 km buffer
 #' @noRd
 .gbif_occ_refine <- function(points, buffer) {
@@ -318,7 +423,10 @@ gbif_occ_fetch_species <- function(name, wkt, max_records = 300L,
 #' GBIF occurrences inside the buffer, for a set of species
 #'
 #' Dedupes names (LESSONS L-001), queries only what is not already memoized for
-#' this buffer, and refines every returned point against the exact buffer. The
+#' this buffer, and refines every returned point against the exact buffer. A
+#' buffer of detached parcels is split into query blocks first
+#' ([gbif_occ_query_blocks()]), so each request carries a tight polygon and the
+#' `max_records` page cannot fill with distant points (LESSONS L-023). The
 #' caller passes only the species that still need checking (e.g.
 #' `dwc_unvalidated_names()`), keeping the geo step aligned with the cascade's
 #' skip-already-validated optimization. An empty `names` never touches the
@@ -350,36 +458,50 @@ gbif_occ_in_buffer <- function(names, buffer, max_records = 300L,
         return(empty)
     }
 
-    wkt <- gbif_occ_wkt(buffer)
-    if (is.na(wkt) || !nzchar(wkt)) {
+    wkts <- vapply(gbif_occ_query_blocks(buffer), gbif_occ_wkt, character(1))
+    wkts <- wkts[!is.na(wkts) & nzchar(wkts)]
+    if (length(wkts) == 0L) {
         return(empty)
     }
-    if (!identical(.gbif_occ_cache$wkt, wkt)) {
-        .gbif_occ_cache$wkt <- wkt
+    # The cache is keyed on the whole block set, not one polygon: changing how
+    # the buffer splits changes what a species lookup means.
+    key <- paste(wkts, collapse = "\n")
+    if (!identical(.gbif_occ_cache$wkt, key)) {
+        .gbif_occ_cache$wkt <- key
         .gbif_occ_cache$by_name <- new.env(parent = emptyenv())
     }
     store <- .gbif_occ_cache$by_name
 
     failed <- character(0)
     queried <- FALSE
-    parts <- lapply(names_chr, function(nm) {
-        if (!is.null(store[[nm]])) {
-            return(store[[nm]])
-        }
+    # The throttle spaces REQUESTS, not species. A fragmented area sends one
+    # request per block, and firing a species' blocks back-to-back trips GBIF's
+    # 429 just as fast as firing one request per species did.
+    fetch_block <- function(nm, wkt) {
         if (queried && throttle > 0) {
             sleep(throttle)
         }
         queried <<- TRUE
-        pts <- fetch(nm, wkt, max_records, page_size)
-        if (isTRUE(attr(pts, "gbif_error"))) {
-            # Could not check this species — leave it uncached so a re-run retries.
+        fetch(nm, wkt, max_records, page_size)
+    }
+
+    parts <- lapply(names_chr, function(nm) {
+        if (!is.null(store[[nm]])) {
+            return(store[[nm]])
+        }
+        pages <- lapply(wkts, function(w) fetch_block(nm, w))
+        # One failed block is enough to miss a real occurrence, so the species
+        # stays "could not check" and uncached instead of being called absent.
+        if (any(vapply(pages, function(p) isTRUE(attr(p, "gbif_error")), logical(1)))) {
             failed <<- c(failed, nm)
             return(empty)
         }
+        pts <- do.call(rbind, pages)
         if (nrow(pts) > 0L) {
             pts$species <- nm
         }
         pts <- .gbif_occ_refine(pts, buffer)
+        pts <- .gbif_occ_dedupe(pts)
         store[[nm]] <- pts
         pts
     })
