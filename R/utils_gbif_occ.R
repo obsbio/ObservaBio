@@ -276,15 +276,20 @@ gbif_occ_query_page <- function(name, wkt, start, limit) {
 #' the several shapes `occ_data` returns: the `$data` tibble, a bare data frame,
 #' or the "no data" sentinel.
 #'
+#' `key` is GBIF's own occurrence identifier. It is carried so overlapping query
+#' polygons can be deduplicated by record identity: two distinct observations
+#' often share a rounded coordinate and a dataset, so coordinates cannot tell a
+#' repeat apart from a neighbour (LESSONS L-024).
+#'
 #' @param res An `rgbif::occ_data` result (or its `$data`).
-#' @return Data frame `species`/`decimalLongitude`/`decimalLatitude`/`datasetKey`
-#'   (zero rows when nothing usable is present).
+#' @return Data frame `species`/`decimalLongitude`/`decimalLatitude`/
+#'   `datasetKey`/`key` (zero rows when nothing usable is present).
 #' @noRd
 gbif_occ_parse <- function(res) {
     empty <- data.frame(
         species = character(0), decimalLongitude = numeric(0),
         decimalLatitude = numeric(0), datasetKey = character(0),
-        stringsAsFactors = FALSE
+        key = character(0), stringsAsFactors = FALSE
     )
     dat <- if (is.list(res) && !is.data.frame(res) && "data" %in% names(res)) {
         res$data
@@ -309,6 +314,7 @@ gbif_occ_parse <- function(res) {
         decimalLongitude = lon[keep],
         decimalLatitude = lat[keep],
         datasetKey = as.character(col("datasetKey"))[keep],
+        key = as.character(col("key"))[keep],
         stringsAsFactors = FALSE
     )
 }
@@ -366,6 +372,29 @@ gbif_occ_fetch_species <- function(name, wkt, max_records = 300L,
         warning(sprintf("GBIF occurrence lookup failed for '%s': %s", name, conditionMessage(e)))
         .gbif_occ_flag_error(empty, TRUE)
     })
+}
+
+#' Drop a record two overlapping query polygons both returned
+#'
+#' The blocks are disjoint, but their coarse query polygons are not, so one
+#' record can come back from two blocks and double a map marker. Identity is
+#' GBIF's `key`: deduplicating on coordinates would delete distinct observations
+#' that share a rounded coordinate and a dataset (LESSONS L-024). Without a
+#' usable `key` — a test stub, an older cached table — the whole row is the only
+#' identity available.
+#' @noRd
+.gbif_occ_dedupe <- function(points) {
+    if (nrow(points) == 0L) {
+        return(points)
+    }
+    id <- if ("key" %in% names(points) && !anyNA(points$key) && all(nzchar(points$key))) {
+        points$key
+    } else {
+        do.call(paste, c(points, sep = "\r"))
+    }
+    out <- points[!duplicated(id), , drop = FALSE]
+    rownames(out) <- NULL
+    out
 }
 
 #' Keep only points that fall inside the exact 10 km buffer
@@ -466,10 +495,7 @@ gbif_occ_in_buffer <- function(names, buffer, max_records = 300L,
             pts$species <- nm
         }
         pts <- .gbif_occ_refine(pts, buffer)
-        # Two blocks' query polygons can overlap even though the blocks do not,
-        # so the same record can come back twice and double a map marker.
-        pts <- pts[!duplicated(pts), , drop = FALSE]
-        rownames(pts) <- NULL
+        pts <- .gbif_occ_dedupe(pts)
         store[[nm]] <- pts
         pts
     })

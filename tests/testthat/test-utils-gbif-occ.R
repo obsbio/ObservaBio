@@ -98,7 +98,7 @@ test_that("gbif_occ_parse extracts coordinate points from a stubbed occ_data", {
     )
     pts <- gbif_occ_parse(res)
     expect_equal(nrow(pts), 2L)
-    expect_named(pts, c("species", "decimalLongitude", "decimalLatitude", "datasetKey"))
+    expect_named(pts, c("species", "decimalLongitude", "decimalLatitude", "datasetKey", "key"))
     expect_equal(pts$datasetKey, c("ds-1", "ds-2"))
 })
 
@@ -245,7 +245,7 @@ test_that("gbif_occ_in_buffer with no names never touches the fetch seam", {
     boom <- function(...) stop("network must not be reached")
     out <- gbif_occ_in_buffer(character(0), sample_buffer(), fetch = boom)
     expect_equal(nrow(out), 0L)
-    expect_named(out, c("species", "decimalLongitude", "decimalLatitude", "datasetKey"))
+    expect_named(out, c("species", "decimalLongitude", "decimalLatitude", "datasetKey", "key"))
 })
 
 test_that("gbif_occ_in_buffer refines returned points against the exact buffer", {
@@ -408,4 +408,46 @@ test_that("gbif_occ_in_buffer marks a species failed when any one block fails", 
                               sleep = function(s) invisible())
     expect_equal(attr(out, "failed"), "Sp x")
     expect_equal(nrow(out), 0L)
+})
+
+test_that("gbif_occ_in_buffer keeps distinct records that share a coordinate", {
+    reset_occ_cache()
+    buf <- scattered_buffer(12L, spread = 1.5)
+    centre <- sf::st_coordinates(sf::st_centroid(
+        suppressWarnings(sf::st_cast(sf::st_union(sf::st_geometry(buf)), "POLYGON"))[1L]
+    ))
+    # Two separate observations at the same rounded coordinate, from the same
+    # dataset — routine for iNaturalist records. Only the GBIF key tells them
+    # apart, and every block returns both.
+    stub_fetch <- function(name, wkt, max_records, page_size) {
+        data.frame(
+            species = name,
+            decimalLongitude = rep(centre[1L, "X"], 2L),
+            decimalLatitude = rep(centre[1L, "Y"], 2L),
+            datasetKey = c("ds-1", "ds-1"),
+            key = c("101", "102"),
+            stringsAsFactors = FALSE
+        )
+    }
+    out <- gbif_occ_in_buffer("Sp one", buf, fetch = stub_fetch,
+                              sleep = function(s) invisible())
+    expect_equal(nrow(out), 2L)
+    expect_setequal(out$key, c("101", "102"))
+})
+
+test_that("gbif_occ_in_buffer collapses the same record seen by two blocks", {
+    reset_occ_cache()
+    buf <- scattered_buffer(12L, spread = 1.5)
+    centre <- sf::st_coordinates(sf::st_centroid(
+        suppressWarnings(sf::st_cast(sf::st_union(sf::st_geometry(buf)), "POLYGON"))[1L]
+    ))
+    stub_fetch <- function(name, wkt, max_records, page_size) {
+        data.frame(species = name, decimalLongitude = centre[1L, "X"],
+                   decimalLatitude = centre[1L, "Y"], datasetKey = "ds-1",
+                   key = "777", stringsAsFactors = FALSE)
+    }
+    out <- gbif_occ_in_buffer("Sp one", buf, fetch = stub_fetch,
+                              sleep = function(s) invisible())
+    expect_equal(nrow(out), 1L)
+    expect_equal(out$key, "777")
 })
