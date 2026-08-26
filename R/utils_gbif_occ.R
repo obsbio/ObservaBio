@@ -33,28 +33,34 @@
 # the ladder gives up fidelity slowly.
 .GBIF_WKT_SIMPLIFY_M <- c(200, 500, 1000, 2000, 5000)
 
-#' Force a single (multi)polygon's rings to the GBIF winding (CCW exterior)
+#' Force a (multi)polygon's rings to the GBIF winding
 #'
-#' GBIF returns the *complement* of a clockwise polygon, which would silently
-#' drop every real point after the exact-buffer refine. sf does not guarantee a
-#' winding, so we reorient here. Holes are left as-is (the query polygon is a
-#' coarse superset; hole precision does not matter — the refine is exact).
+#' GBIF reads a clockwise exterior ring as *everything outside it*, so a
+#' wrongly wound polygon returns the complement and the exact-buffer refine then
+#' drops every real point — silent zero results. It also rejects a polygon whose
+#' **interior** ring runs anticlockwise ("Polygon with anticlockwise interior
+#' ring"), which fails the lookup outright. sf guarantees neither winding, so
+#' both are set here: exterior anticlockwise, holes clockwise.
 #'
 #' @param geom An `sfc` with one POLYGON or MULTIPOLYGON.
-#' @return The same geometry with CCW exterior ring(s).
+#' @return The same geometry, exterior ring(s) CCW and interior ring(s) CW.
 #' @noRd
 .geo_force_ccw <- function(geom) {
-    ring_ccw <- function(ring) {
+    orient <- function(ring, ccw) {
         # Shoelace: negative signed area == clockwise in x/y (lon/lat) space.
         x <- ring[, 1L]
         y <- ring[, 2L]
         i <- seq_len(nrow(ring) - 1L)
         signed2 <- sum(x[i] * y[i + 1L] - x[i + 1L] * y[i])
-        if (signed2 < 0) ring[rev(seq_len(nrow(ring))), , drop = FALSE] else ring
+        wrong <- if (ccw) signed2 < 0 else signed2 > 0
+        if (wrong) ring[rev(seq_len(nrow(ring))), , drop = FALSE] else ring
     }
     reorient <- function(poly) {
-        poly[[1L]] <- ring_ccw(poly[[1L]])
-        poly
+        rings <- unclass(poly)
+        for (i in seq_along(rings)) {
+            rings[[i]] <- orient(rings[[i]], ccw = i == 1L)
+        }
+        rings
     }
     g <- sf::st_geometry(geom)[[1L]]
     if (inherits(g, "POLYGON")) {

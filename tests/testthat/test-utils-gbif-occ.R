@@ -451,3 +451,39 @@ test_that("gbif_occ_in_buffer collapses the same record seen by two blocks", {
     expect_equal(nrow(out), 1L)
     expect_equal(out$key, "777")
 })
+
+# ---- .geo_force_ccw: winding of exterior and interior rings -----------------
+
+test_that(".geo_force_ccw winds the exterior CCW and the holes CW", {
+    # GBIF rejects a polygon whose interior ring runs anticlockwise, with
+    # "Polygon with anticlockwise interior ring", and the whole lookup fails.
+    # A tight query polygon over scattered parcels does grow holes.
+    signed2 <- function(ring) {
+        i <- seq_len(nrow(ring) - 1L)
+        sum(ring[i, 1L] * ring[i + 1L, 2L] - ring[i + 1L, 1L] * ring[i, 2L])
+    }
+    outer <- cbind(c(0, 4, 4, 0, 0), c(0, 0, 4, 4, 0))          # CCW
+    hole  <- cbind(c(1, 2, 2, 1, 1), c(1, 1, 2, 2, 1))          # also CCW: wrong
+    poly <- sf::st_sfc(sf::st_polygon(list(outer, hole)), crs = 4326)
+    expect_gt(signed2(hole), 0)
+
+    rings <- unclass(.geo_force_ccw(poly)[[1L]])
+    expect_gt(signed2(rings[[1L]]), 0)   # exterior anticlockwise
+    expect_lt(signed2(rings[[2L]]), 0)   # hole clockwise
+})
+
+test_that(".geo_force_ccw fixes the holes of every part of a MULTIPOLYGON", {
+    signed2 <- function(ring) {
+        i <- seq_len(nrow(ring) - 1L)
+        sum(ring[i, 1L] * ring[i + 1L, 2L] - ring[i + 1L, 1L] * ring[i, 2L])
+    }
+    part <- function(dx) list(
+        cbind(c(0, 4, 4, 0, 0) + dx, c(0, 0, 4, 4, 0)),
+        cbind(c(1, 2, 2, 1, 1) + dx, c(1, 1, 2, 2, 1))
+    )
+    multi <- sf::st_sfc(sf::st_multipolygon(list(part(0), part(10))), crs = 4326)
+    for (p in unclass(.geo_force_ccw(multi)[[1L]])) {
+        expect_gt(signed2(p[[1L]]), 0)
+        expect_lt(signed2(p[[2L]]), 0)
+    }
+})
