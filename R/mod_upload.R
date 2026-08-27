@@ -112,9 +112,9 @@ advanced_options <- function(ns) {
 upload_card <- function(input_id, badge, icon_name, title, formats, hint,
                         accept, status_id, multiple = FALSE) {
     shiny::tags$div(
-        class = paste0("zh-card upload-card--", badge),
+        class = paste0("ob-card upload-card--", badge),
         shiny::tags$div(
-            class = "zh-card__body upload-card",
+            class = "ob-card__body upload-card",
             shiny::tags$div(
                 class = "upload-card__head",
                 shiny::tags$span(

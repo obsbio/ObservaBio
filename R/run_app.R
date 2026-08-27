@@ -1,7 +1,7 @@
-# Title: Run the ZHOUSE Application
-# Adapted from Saira (R/run_app.R), trimmed to the ZHOUSE scope.
+# Title: Run the ObservaBio Application
+# Adapted from Saira (R/run_app.R), trimmed to the ObservaBio scope.
 
-#' Run the ZHOUSE Shiny application
+#' Run the ObservaBio Shiny application
 #'
 #' Starts the app for Darwin Core standardization and biodiversity validation.
 #'

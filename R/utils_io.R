@@ -1,7 +1,7 @@
 # Title: Species-table IO
-# Reads the ZHOUSE species table from .xlsx/.csv/.tsv/.txt. The header row is
+# Reads the ObservaBio species table from .xlsx/.csv/.tsv/.txt. The header row is
 # DETECTED (the first row carrying a `scientificName` cell), not fixed at row 2,
-# so the reader accepts the ZHOUSE double-header model (PT-BR labels on row 1,
+# so the reader accepts the ObservaBio double-header model (PT-BR labels on row 1,
 # Darwin Core names on row 2, data from row 3) as well as a plain single-header
 # sheet or one with preamble rows above the header. Delimited text sniffs its
 # separator (tab/;/,/|) and strips a UTF-8 BOM. Only base + readxl — no new deps.
@@ -99,7 +99,7 @@ detect_header_row <- function(grid, key = .ObservaBio_name_key(), max_scan = 30L
     NA_integer_
 }
 
-#' Read a ZHOUSE species table (.xlsx/.csv/.tsv/.txt), auto-detecting the header
+#' Read a ObservaBio species table (.xlsx/.csv/.tsv/.txt), auto-detecting the header
 #'
 #' @param path Path to the species table.
 #' @param key Column name that anchors header detection (default

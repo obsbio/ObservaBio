@@ -1,7 +1,7 @@
 # Title: Excel Export (writexl)
-# Writes the two ZHOUSE deliverables produced by utils_dwc.R (SPEC §9):
+# Writes the two ObservaBio deliverables produced by utils_dwc.R (SPEC §9):
 #   1. standardized DwC sheet — one row per record, the input column model
-#      preserved, reproducing the ZHOUSE double header (row 1 = PT-BR labels,
+#      preserved, reproducing the ObservaBio double header (row 1 = PT-BR labels,
 #      row 2 = Darwin Core names), then the data rows.
 #   2. audit report — two sheets: `auditoria` and `nao_resolvidos`.
 # writexl only (no styling), matching the reference scripts.
@@ -22,7 +22,7 @@ blank_na <- function(df) {
 
 #' Build the double-header frame (PT labels + DwC names + data) for writexl
 #'
-#' Reproduces the ZHOUSE model: the first written row holds the PT-BR labels, the
+#' Reproduces the ObservaBio model: the first written row holds the PT-BR labels, the
 #' second the Darwin Core column names, and the rest the data. readxl auto-names
 #' (`...3`) for blank PT labels are blanked; the label vector is aligned to the
 #' column count.

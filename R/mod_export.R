@@ -1,5 +1,5 @@
 # Title: Export Module (Step 4 — Exportar)
-# Reactive bridge: serves the two ZHOUSE Excel deliverables via download cards and
+# Reactive bridge: serves the two ObservaBio Excel deliverables via download cards and
 # shows the processing timeline. Wraps the pure writers in utils_export.R
 # (write_standardized_xlsx / write_audit_xlsx). Audit geo columns are added with
 # the geo runtime (later increment). UI text is PT-BR (SPEC §2.1).
@@ -75,10 +75,10 @@ mod_export_server <- function(id, result_r) {
                 )
             })
             shiny::tags$div(
-                class = "zh-card",
+                class = "ob-card",
                 style = "margin-top: var(--space-8); max-width: 520px;",
                 shiny::tags$div(
-                    class = "zh-card__body",
+                    class = "ob-card__body",
                     shiny::tags$span(class = "eyebrow", "Processamento"),
                     shiny::tags$ul(class = "timeline", rows)
                 )
@@ -86,7 +86,7 @@ mod_export_server <- function(id, result_r) {
         })
 
         output$dl_std <- shiny::downloadHandler(
-            filename = function() "zhouse_darwincore_padronizada.xlsx",
+            filename = function() "observabio_darwincore_padronizada.xlsx",
             content = function(file) {
                 res <- result_r()
                 shiny::req(res)
@@ -98,7 +98,7 @@ mod_export_server <- function(id, result_r) {
         )
 
         output$dl_audit <- shiny::downloadHandler(
-            filename = function() "zhouse_darwincore_auditoria.xlsx",
+            filename = function() "observabio_darwincore_auditoria.xlsx",
             content = function(file) {
                 res <- result_r()
                 shiny::req(res)

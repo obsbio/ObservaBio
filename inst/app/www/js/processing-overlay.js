@@ -10,7 +10,7 @@
     return document.querySelector(".shiny-progress-notification") !== null;
   }
   function sync() {
-    document.body.classList.toggle("zh-processing", isProcessing());
+    document.body.classList.toggle("ob-processing", isProcessing());
   }
 
   // Coalesce bursts (DataTables, leaflet redraws) into one check per frame.

@@ -64,7 +64,7 @@ threat_status_class <- function(status) {
 
 #' Collapse a kingdom to one of the four filter keys
 #'
-#' The three kingdoms ZHOUSE actually resolves get their own key; anything else
+#' The three kingdoms ObservaBio actually resolves get their own key; anything else
 #' lands in `"other"`. A missing kingdom stays `NA` — a pre-validated row with no
 #' kingdom matches no taxon filter (it is not "other", it is unknown).
 #' @noRd

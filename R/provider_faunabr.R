@@ -3,7 +3,7 @@
 # faunabr::check_fauna_names(). No download at runtime — the base ships in the
 # bundle and is regenerated offline by data-raw/prep_faunabr.R.
 
-.FAUNABR_RDS <- "faunabr_validabio.rds"
+.FAUNABR_RDS <- "faunabr_observabio.rds"
 
 #' Query the Fauna BR base with normalized names
 #'

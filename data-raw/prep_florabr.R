@@ -1,14 +1,14 @@
 # data-raw/prep_florabr.R
 # Regenerate the embedded Flora do Brasil base. Run LOCALLY (never at runtime).
 # Downloads the official Flora e Funga do Brasil dataset, keeps the "short"
-# column set, and writes inst/extdata/florabr_validabio.rds + a version sidecar.
+# column set, and writes inst/extdata/florabr_observabio.rds + a version sidecar.
 #
 # Usage:  Rscript data-raw/prep_florabr.R
 # Note:   florabr::get_florabr() only downloads with verbose = TRUE (LESSONS L-004).
 
 suppressWarnings(suppressMessages(library(florabr)))
 
-out_rds  <- file.path("inst", "extdata", "florabr_validabio.rds")
+out_rds  <- file.path("inst", "extdata", "florabr_observabio.rds")
 out_meta <- sub("\\.rds$", ".meta.json", out_rds)
 tmp_dir  <- file.path("data-raw", "tmp", "florabr")
 dir.create(dirname(out_rds), recursive = TRUE, showWarnings = FALSE)

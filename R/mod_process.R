@@ -28,9 +28,9 @@ mod_process_ui <- function(id) {
                 "Darwin Core. Isso pode levar alguns segundos por espécie nova."
             ),
             shiny::tags$div(
-                class = "zh-card process-card",
+                class = "ob-card process-card",
                 shiny::tags$div(
-                    class = "zh-card__body",
+                    class = "ob-card__body",
                     shiny::tags$span(class = "process-card__icon", shiny::icon("play")),
                     shiny::uiOutput(ns("ready")),
                     shiny::tags$ul(

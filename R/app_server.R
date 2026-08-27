@@ -5,7 +5,7 @@
 # Ir para exportação (3→4); the stepper reflects that state and lets the user
 # click any already-reached step to jump back or forward (gated by reached_rv).
 
-#' ZHOUSE Shiny server
+#' ObservaBio Shiny server
 #'
 #' @param input,output,session Standard Shiny server arguments.
 #' @return Invisibly NULL.
@@ -37,8 +37,9 @@ app_server <- function(input, output, session) {
     stepper <- mod_stepper_server(
         "stepper", shiny::reactive(step_rv()), shiny::reactive(reached_rv())
     )
-    # The "Como usar" walkthrough — global (its trigger is in the header), and
-    # independent of the step state.
+    # The "Como usar" walkthrough — global (its trigger sits in the foot of the
+    # left rail, so it is reachable from any step) and independent of the step
+    # state.
     mod_help_server("help")
 
     # Step 1 → 2: Continuar (guarded on a valid upload).

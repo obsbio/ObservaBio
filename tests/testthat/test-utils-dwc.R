@@ -5,14 +5,14 @@
 # (no network), which is the equivalence the parity test asserts. A full diff
 # against the client's real spreadsheet needs that fixture, added when available.
 
-# A ZHOUSE-shaped upload: DwC model columns, a mix of pre-validated and new rows.
+# A ObservaBio-shaped upload: DwC model columns, a mix of pre-validated and new rows.
 sample_records <- function() {
     model_cols <- c("datasetName", "scientificName", "taxonID", "taxonRank",
                     "kingdom", "phylum", "class", "order", "family", "genus",
                     "specificEpithet", "infraspecificEpithet", "vernacularName",
                     "locality")
     df <- data.frame(
-        datasetName = "ZHOUSE",
+        datasetName = "ObservaBio",
         scientificName = c("Already Validated", "Handroanthus impetiginosus",
                            "Handroanthus impetiginosus", "Cedrela odorata",
                            "Zzz nonexistus"),

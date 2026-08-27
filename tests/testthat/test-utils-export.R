@@ -1,5 +1,5 @@
 # Export round-trip: the standardized sheet must round-trip through writexl/readxl
-# with the ZHOUSE double header (row 1 PT-BR labels, row 2 DwC names), and the
+# with the ObservaBio double header (row 1 PT-BR labels, row 2 DwC names), and the
 # audit workbook must carry the two expected sheets.
 
 read_blank_na <- function(path, sheet = 1) {

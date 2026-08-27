@@ -1,7 +1,7 @@
 # data-raw/prep_faunabr.R
 # Regenerate the embedded Fauna do Brasil base. Run LOCALLY (never at runtime).
 # Downloads the official Catálogo Taxonômico da Fauna do Brasil dataset, keeps
-# the "short" column set, and writes inst/extdata/faunabr_validabio.rds + a sidecar.
+# the "short" column set, and writes inst/extdata/faunabr_observabio.rds + a sidecar.
 #
 # Usage:  Rscript data-raw/prep_faunabr.R
 # Notes:  faunabr::get_faunabr() only downloads with verbose = TRUE (LESSONS L-004).
@@ -10,7 +10,7 @@
 
 suppressWarnings(suppressMessages(library(faunabr)))
 
-out_rds  <- file.path("inst", "extdata", "faunabr_validabio.rds")
+out_rds  <- file.path("inst", "extdata", "faunabr_observabio.rds")
 out_meta <- sub("\\.rds$", ".meta.json", out_rds)
 tmp_dir  <- file.path("data-raw", "tmp", "faunabr")
 dir.create(dirname(out_rds), recursive = TRUE, showWarnings = FALSE)

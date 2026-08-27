@@ -1,47 +1,6 @@
-# Title: Package Version / Embedded-Base Version Utilities
-# Adapted from Saira (R/utils_version.R). Reports the running package version and
-# the versions of embedded reference bases (from their *.meta.json sidecars).
-
-#' Detect a stale R session (loaded namespace older than the installed package)
-#'
-#' After a user reinstalls ObservaBio without restarting R, the running session
-#' keeps executing the previously loaded namespace while the on-disk package is
-#' newer. Under `pkgload::load_all()` both resolve to the same version, so dev
-#' sessions are never flagged.
-#'
-#' @param loaded,installed Version strings; default to the live lookups.
-#' @return List with `stale` (logical), `loaded`, `installed` (character).
-#' @noRd
-ObservaBio_session_is_stale <- function(loaded = NULL, installed = NULL) {
-    if (is.null(loaded)) {
-        loaded <- tryCatch(
-            as.character(getNamespaceVersion("ObservaBio")),
-            error = function(e) NA_character_
-        )
-    }
-    if (is.null(installed)) {
-        installed <- tryCatch(
-            as.character(utils::packageVersion("ObservaBio")),
-            error = function(e) NA_character_
-        )
-    }
-    stale <- !is.na(loaded) && !is.na(installed) && !identical(loaded, installed)
-    list(stale = stale, loaded = loaded, installed = installed)
-}
-
-#' Version actually loaded in this R session
-#'
-#' @return Character scalar, e.g. "0.0.0.9000", or NA on lookup failure.
-#' @noRd
-ObservaBio_running_version <- function() {
-    tryCatch(
-        as.character(getNamespaceVersion("ObservaBio")),
-        error = function(e) tryCatch(
-            as.character(utils::packageVersion("ObservaBio")),
-            error = function(e2) NA_character_
-        )
-    )
-}
+# Title: Embedded-Base Version Utilities
+# Adapted from Saira (R/utils_version.R). Reports the version of each embedded
+# reference base, read from its *.meta.json sidecar.
 
 #' Path to the metadata sidecar for an embedded base RDS
 #'
