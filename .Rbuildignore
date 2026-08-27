@@ -25,6 +25,7 @@
 ^specs$
 ^correcoes$
 ^LICENSE\.md$
+^NOTICE\.md$
 ^\.gitignore$
 # Quarto landing page. Source for the public site, not package code — it must
 # not travel inside the built package or the Posit bundle.

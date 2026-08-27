@@ -3,7 +3,7 @@ Title: ObservaBio Darwin Core Standardization and Biodiversity Validation
 Version: 0.0.0.9000
 Authors@R:
     person("Rogerio", "Nunes Oliveira", email = "rogerio.onza@outlook.com",
-           role = c("aut", "cre"))
+           role = c("aut", "cre", "cph"))
 Description: Shiny-as-package application (PT-BR UI) that standardizes species
     lists to Darwin Core and validates names against Brazilian botanical and
     zoological authorities (Flora do Brasil, Fauna do Brasil) with a live GBIF
@@ -11,7 +11,7 @@ Description: Shiny-as-package application (PT-BR UI) that standardizes species
     geographic verification (10 km buffer + GBIF occurrences + state/biome) to
     flag species distribution. Ships embedded reference bases and a modular
     provider contract so new authorities can be added without touching the engine.
-License: file LICENSE
+License: GPL-3
 Encoding: UTF-8
 Depends:
     R (>= 4.1.0)

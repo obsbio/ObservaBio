@@ -58,6 +58,16 @@ Para incluir uma nova base taxonômica, veja o contrato em
 `R/provider_contract.R`: um `provider_<nome>.R` mais uma linha em
 `R/provider_registry.R`, sem tocar no motor da cascata.
 
+## Licença
+
+**GPL-3** (`LICENSE.md`, texto verbatim da FSF). Três dependências diretas são
+GPL (>= 3) — `terra`, `florabr` e `faunabr` — e distribuir o conjunto obriga a
+mesma licença. O racional está no ADR-028.
+
+As **bases de referência** em `inst/extdata/` são dado de terceiros (JBRJ, CTFB,
+IBGE, MMA, Hórus, GRIIS) e **não** são cobertas pela GPL-3: continuam sob os
+termos de quem as publica. Ver `NOTICE.md`.
+
 ## Documentação de projeto
 
 O registro de decisões (ADRs), as lições aprendidas e a especificação **não são
