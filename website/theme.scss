@@ -907,6 +907,9 @@ code {
   }
 }
 
+/* Uma faixa só, centralizada: os três créditos correm lado a lado e cada rótulo
+   fica ao lado do seu conteúdo, não acima. O `wrap` de 1120px comporta a linha
+   inteira, e o `flex-wrap` a quebra por item — nunca no meio de um crédito. */
 .footer-credits {
   margin-top: 2rem;
   padding-top: 1.5rem;
@@ -914,13 +917,36 @@ code {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem 2rem;
+  justify-content: center;
+  gap: 0.9rem 2.5rem;
+}
+
+.footer-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.footer-credit-value {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(239, 234, 221, 0.86);
+
+  a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(239, 234, 221, 0.35);
+
+    &:hover { color: #FFFFFF; border-bottom-color: currentColor; }
+  }
 }
 
 .footer-logos {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 1.75rem;
 }
 
@@ -943,7 +969,7 @@ code {
 }
 
 /* `.footer-label` reserva a linha inteira dentro de `.footer-links`. Aqui ele é
-   um rótulo ao lado das marcas, não acima delas. */
+   um rótulo ao lado do crédito, não acima dele. */
 .footer-credits .footer-label { width: auto; }
 
 .footer-label {
