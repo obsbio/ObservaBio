@@ -1,4 +1,4 @@
-# Title: Build the ZHOUSE deploy artifacts (renv.lock + manifest.json + .posit)
+# Title: Build the ObservaBio deploy artifacts (renv.lock + manifest.json + .posit)
 # Run before publishing:            Rscript data-raw/build_deploy.R
 # Verify the lock is still current: Rscript data-raw/build_deploy.R --check
 # Runbook and platform notes: docs/deploy.md. Rationale: docs/DECISIONS.md.

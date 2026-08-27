@@ -95,7 +95,7 @@ step_header <- function(n, step, title, note = NULL) {
     )
 }
 
-#' Build the ZHOUSE Shiny UI
+#' Build the ObservaBio Shiny UI
 #'
 #' @return A `bslib::page` UI object.
 #' @noRd
@@ -114,7 +114,7 @@ app_ui <- function() {
             class = "app-shell",
             app_rail(),
             shiny::tags$main(
-                class = "app-main zh-topo",
+                class = "app-main ob-topo",
                 shiny::tabsetPanel(
                     id = "wizard",
                     type = "hidden",

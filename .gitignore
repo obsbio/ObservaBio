@@ -48,10 +48,10 @@ Thumbs.db
 Biodiversidade Darwincore*
 
 # Local scratch: implementation specs, visual reference, test fixtures.
-/zhouse-specs/
-/zhouse-correcoes/
-/zhouse_area_teste.zip
-/zhouse_area_teste.kmz
+/specs/
+/correcoes/
+/area_teste.zip
+/area_teste.kmz
 
 # Landing page (Quarto) — build output, never committed.
 /website/_site/

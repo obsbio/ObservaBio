@@ -3,7 +3,7 @@
 # florabr::check_names(). No download/future/polling — the base ships in the
 # bundle and is regenerated offline by data-raw/prep_florabr.R.
 
-.FLORABR_RDS <- "florabr_validabio.rds"
+.FLORABR_RDS <- "florabr_observabio.rds"
 
 #' Query the Flora BR base with normalized names
 #'

@@ -1,4 +1,4 @@
-# valida-bio
+# observabio
 
 Aplicação web (R + Shiny, PT-BR) que padroniza listas de espécies para o padrão
 **Darwin Core** e valida os nomes contra as autoridades brasileiras (**Flora do
@@ -7,9 +7,6 @@ Cruza status de conservação (**MMA + IUCN**), executa uma **verificação
 geográfica** (buffer de 10 km + ocorrências GBIF + estado/bioma →
 `distributionFlag`), mostra um **mapa interativo** e gera **dois Excel** (dados
 padronizados + auditoria).
-
-O pacote R se chama `ObservaBio`. A aplicação é apresentada como **ZHOUSE** na
-interface.
 
 ## Requisitos
 
@@ -42,7 +39,7 @@ Rscript data-raw/build_deploy.R --check  # confere se o lock ainda está atual
 ```
 
 A publicação em si é pela IDE (Posit Publisher / `rsconnect::deployApp()`), que
-lê `renv.lock` e `.posit/publish/valida-bio.toml`. A rota por GitHub, que leria
+lê `renv.lock` e `.posit/publish/observabio.toml`. A rota por GitHub, que leria
 `manifest.json`, não é usada.
 
 ## Estrutura

@@ -1,6 +1,6 @@
 # read_ObservaBio_table decodes .xlsx/.csv/.tsv/.txt and DETECTS the header row (the
 # first row carrying scientificName) rather than assuming row 2. The double-header
-# ZHOUSE model (PT labels row 1, DwC names row 2, data row 3) must still decode.
+# ObservaBio model (PT labels row 1, DwC names row 2, data row 3) must still decode.
 
 write_double_header_fixture <- function(path) {
     frame <- data.frame(
@@ -91,7 +91,7 @@ test_that("read_ObservaBio_table finds the header below preamble rows", {
     on.exit(unlink(path), add = TRUE)
     writeLines(c(
         "Inventario de Peixes,,",
-        "Projeto ZHOUSE,,",
+        "Projeto ObservaBio,,",
         "scientificName,locality,taxonID",
         "Cichla ocellaris,Rio X,GBIF:1"
     ), path)
@@ -100,7 +100,7 @@ test_that("read_ObservaBio_table finds the header below preamble rows", {
     expect_equal(parsed$model_cols, c("scientificName", "locality", "taxonID"))
     expect_equal(nrow(parsed$records), 1L)
     # The row directly above the header becomes pt_labels.
-    expect_equal(parsed$pt_labels[1], "Projeto ZHOUSE")
+    expect_equal(parsed$pt_labels[1], "Projeto ObservaBio")
 })
 
 test_that("read_ObservaBio_table strips a UTF-8 BOM before detecting the header", {

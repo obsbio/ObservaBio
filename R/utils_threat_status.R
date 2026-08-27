@@ -229,7 +229,7 @@ iucn_category <- function(scientific_names, taxon_ids = NA) {
 # IUCN Red List category + criteria — rredlist key route (ADR-005)
 # ---------------------------------------------------------------------------
 # The keyless GBIF route above returns the category but not `criteria`. The
-# ZHOUSE output model has a `criteria` column, so when a key is available and
+# ObservaBio output model has a `criteria` column, so when a key is available and
 # rredlist is installed, we query `rredlist::rl_species_latest()` to fill both.
 # Two key sources (ADR-005): the user's own key, pasted in the optional Step 1
 # field and living only in that Shiny session, or the server's `IUCN_KEY` secret

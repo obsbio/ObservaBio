@@ -4,19 +4,19 @@
    ========================================================================== */
 
 /* ── Cards ──────────────────────────────────────────────────────────────── */
-.card, .zh-card {
+.card, .ob-card {
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
 }
-.card-header, .zh-card__header {
+.card-header, .ob-card__header {
   background: transparent;
   border-bottom: 1px solid var(--border-light);
   padding: var(--space-4) var(--space-5);
 }
 .card-title { margin: 0; }
-.zh-card__body { padding: var(--space-6); }
+.ob-card__body { padding: var(--space-6); }
 
 /* ── Buttons (align Bootstrap to the brand) ─────────────────────────────── */
 .btn {
@@ -342,7 +342,7 @@
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-hero);
 }
-.process-card .zh-card__body {
+.process-card .ob-card__body {
   padding: var(--space-10);
   display: flex;
   flex-direction: column;
@@ -374,8 +374,8 @@
 
 /* Processing backdrop — dims the step so only the progress toast stays in focus
    (the toast sits above via the raised panel z-index below). processing-overlay.js
-   toggles body.zh-processing while withProgress runs. */
-body.zh-processing::before {
+   toggles body.ob-processing while withProgress runs. */
+body.ob-processing::before {
   content: "";
   position: fixed;
   inset: 0;

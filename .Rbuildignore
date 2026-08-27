@@ -20,10 +20,10 @@
 # while it stays on disk in R/ for the deploy bundle. See R/_disable_autoload.R.
 ^R/_disable_autoload\.R$
 ^Biodiversidade Darwincore.*
-^zhouse_planilha_teste.*\.xlsx$
-^zhouse_area_teste\.zip$
-^zhouse-specs$
-^zhouse-correcoes$
+^planilha_teste.*\.xlsx$
+^area_teste\.zip$
+^specs$
+^correcoes$
 ^LICENSE\.md$
 ^\.gitignore$
 # Quarto landing page. Source for the public site, not package code — it must

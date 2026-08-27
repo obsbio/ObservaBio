@@ -1,7 +1,7 @@
 # Title: Darwin Core Output + Audit Mapping
 # Turns a taxonomic cascade result (canonical schema, one row per unique
 # normalized name; see provider_contract.R) plus the uploaded records into the
-# two ZHOUSE deliverables (SPEC §9):
+# two ObservaBio deliverables (SPEC §9):
 #   1. standardized DwC sheet — one row per record, the input column model
 #      preserved, taxonomy filled for newly resolved names.
 #   2. audit table — one decision per name, plus its `nao_resolvidos` subset.
@@ -35,10 +35,10 @@ ensure_columns <- function(df, cols) {
     df
 }
 
-#' Map cascade status columns onto the ZHOUSE output model columns
+#' Map cascade status columns onto the ObservaBio output model columns
 #'
 #' `resolve_threat_status()` produces `statusMMA`/`statusSourceMMA`/
-#' `iucnCategory`/`iucnCriteria`; the real ZHOUSE model expects
+#' `iucnCategory`/`iucnCriteria`; the real ObservaBio model expects
 #' `status`/`statusSource`/`statusIUCN`/`criteria`.
 #' @noRd
 dwc_status_columns <- function() {
@@ -46,7 +46,7 @@ dwc_status_columns <- function() {
       statusIUCN = "iucnCategory", criteria = "iucnCriteria")
 }
 
-#' Format an MMA category code into the ZHOUSE `status` label
+#' Format an MMA category code into the ObservaBio `status` label
 #'
 #' Mirrors the reference `format_status_label` so the standardized `status`
 #' column reads e.g. "(VU) Vulneravel". Unknown or blank codes yield NA.
@@ -371,7 +371,7 @@ audit_attach_geo <- function(audit, geo) {
 #'
 #' Accepted names split into "exact" (unchanged) vs "corrected" (name changed).
 #' The other statuses pass through. Mirrors the reference audit vocabulary while
-#' staying faithful to the ZHOUSE provider contract's `validation_status`.
+#' staying faithful to the ObservaBio provider contract's `validation_status`.
 #'
 #' @noRd
 audit_match_type <- function(validation_status, query_name, final_name) {
@@ -469,7 +469,7 @@ build_audit_table <- function(cascade, original_names = NULL, geo = NULL,
 #' qualifier). This covers the `safe_rank` bucket of script 260626 and goes one
 #' step further, on purpose: the reference *promotes* an uncertain name that
 #' matches an accepted binomial exactly (`exact_promoted`) and leaves it
-#' unflagged. ZHOUSE flags it anyway — `Scinax aff. fuscovarius` means the
+#' unflagged. ObservaBio flags it anyway — `Scinax aff. fuscovarius` means the
 #' recorder was not sure it is that species, and `normalize_scientific_name()`
 #' strips the qualifier before the cascade, so without this the doubt would be
 #' silently promoted to a confident `taxonID` (ADR-015).

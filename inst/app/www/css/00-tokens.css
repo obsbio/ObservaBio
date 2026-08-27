@@ -1,5 +1,5 @@
 /* ==========================================================================
-   00-tokens.css — ZHOUSE design tokens (single source: docs/design.md v1.0)
+   00-tokens.css — ObservaBio design tokens (single source: docs/design.md v1.0)
    All values below are the canonical tokens. Never hard-code a hex in the
    component files — reference a var() from here.
    ========================================================================== */

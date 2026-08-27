@@ -5,8 +5,8 @@
 #' Canonical result schema every provider's query() must return
 #'
 #' Column order is stable; downstream code relies on these names. Derived from
-#' the Saira `normalize_provider_result` schema plus the DwC fields the ZHOUSE
-#' scripts emit.
+#' the Saira `normalize_provider_result` schema plus the DwC fields the
+#' original standardization script emitted.
 #'
 #' @return Character vector of the 18 canonical column names.
 #' @noRd

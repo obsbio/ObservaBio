@@ -8,7 +8,7 @@
 
 find_real_xlsx <- function() {
     candidates <- c(
-        Sys.getenv("ZHOUSE_PARITY_XLSX", ""),
+        Sys.getenv("OBSERVABIO_PARITY_XLSX", ""),
         "Biodiversidade Darwincore 25_06.xlsx",
         file.path("..", "..", "Biodiversidade Darwincore 25_06.xlsx"),
         testthat::test_path("..", "..", "Biodiversidade Darwincore 25_06.xlsx")
@@ -18,9 +18,9 @@ find_real_xlsx <- function() {
     if (length(hit) == 0L) NA_character_ else hit[[1]]
 }
 
-test_that("real ZHOUSE spreadsheet preserves the standardization structure", {
+test_that("real ObservaBio spreadsheet preserves the standardization structure", {
     path <- find_real_xlsx()
-    skip_if(is.na(path), "real ZHOUSE spreadsheet not present (opt-in fixture)")
+    skip_if(is.na(path), "real ObservaBio spreadsheet not present (opt-in fixture)")
 
     parsed <- read_ObservaBio_table(path)
 
