@@ -907,6 +907,45 @@ code {
   }
 }
 
+.footer-credits {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(239, 234, 221, 0.14);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 2rem;
+}
+
+.footer-logos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.75rem;
+}
+
+/* Medidos pela altura, não pela largura: é a altura que faz duas marcas de
+   proporções diferentes lerem como uma linha só de créditos. */
+.footer-logo {
+  width: auto;
+  display: block;
+}
+
+/* O wordmark do Observatório tem duas linhas de texto, então precisa de mais
+   altura que uma marca de linha única para a segunda continuar legível. */
+.footer-logo--obs { height: 34px; }
+
+/* Arte preta sobre a faixa escura — mesma inversão do rodapé da trilha do app. */
+.footer-logo--partner {
+  height: 20px;
+  filter: brightness(0) invert(1);
+  opacity: 0.7;
+}
+
+/* `.footer-label` reserva a linha inteira dentro de `.footer-links`. Aqui ele é
+   um rótulo ao lado das marcas, não acima delas. */
+.footer-credits .footer-label { width: auto; }
+
 .footer-label {
   font-family: var(--font-mono);
   font-size: 0.68rem;

@@ -58,7 +58,7 @@ files = [
     "/inst/app/www/custom.css",
     "/inst/app/www/img/humanize.png",
     "/inst/app/www/img/obsbio-prancha-lapis.png",
-    "/inst/app/www/img/obsbio.webp",
+    "/inst/app/www/img/observatorio-claro.png",
     "/inst/app/www/js/dropzone.js",
     "/inst/app/www/js/processing-overlay.js",
     "/inst/extdata/br_uf_biomes.meta.json",
