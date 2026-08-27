@@ -3417,7 +3417,7 @@
       "checksum": "0ae5a301b9565c7ca66c52d84f086d43"
     },
     "DESCRIPTION": {
-      "checksum": "50b75e5ba7496aaada92140560aec9a4"
+      "checksum": "1c6074f2b0d0e1978ad1cc229a2f1d21"
     },
     "inst/app/www/css/00-tokens.css": {
       "checksum": "6cf81e8ef0bf2f029b147212c8c18760"
@@ -3494,11 +3494,14 @@
     "inst/extdata/sensitive_species.rds": {
       "checksum": "5c3e3671ad85764a23fdd70a0519c5bb"
     },
-    "LICENSE": {
-      "checksum": "127cc2d45cfdf7786ce19e583123a833"
+    "LICENSE.md": {
+      "checksum": "1ebbd3e34237af26da5dc08a4e440464"
     },
     "NAMESPACE": {
       "checksum": "8b09b674ff55758cb668a50b54c70dd3"
+    },
+    "NOTICE.md": {
+      "checksum": "645a1096ef73c4cd324904bac6ea34b7"
     },
     "R/_disable_autoload.R": {
       "checksum": "82b9c03f524a0e1d6c10dde0ca3cf765"
