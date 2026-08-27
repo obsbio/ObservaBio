@@ -217,6 +217,64 @@ test_that("build_results_view joins validator/matchType/gbif_count, marks preval
     expect_equal(distribution_flag_class(NA), "flag-na")
 })
 
+# A rate-limited species was never asked about. It must not arrive at the table
+# looking like a species with no nearby record — that is the confusion L-023
+# warns about, and the detail panel reads this column to say so.
+fetch_sp2_rate_limited <- function(nm, wkt, max_records, page_size) {
+    if (identical(nm, "Aaa bbb")) {
+        return(data.frame(species = nm, decimalLongitude = -47,
+                          decimalLatitude = -22, datasetKey = "ds-1",
+                          stringsAsFactors = FALSE))
+    }
+    out <- gbif_occ_parse(NULL)
+    if (identical(nm, "Ccc ddd")) {
+        attr(out, "gbif_error") <- TRUE
+    }
+    out
+}
+
+test_that("a rate-limited species is marked failed, not counted as zero", {
+    reset_occ_cache()
+    accepted <- c("Aaa bbb", "Ccc ddd", "Eee fff")
+    qn <- vapply(accepted, normalize_scientific_name, character(1), USE.NAMES = FALSE)
+    cascade <- data.frame(
+        query_name = qn, scientificName = accepted,
+        validation_status = rep("accepted", 3),
+        provider = rep("florabr", 3), stringsAsFactors = FALSE
+    )
+    geo <- run_geo_verification(
+        sample_area(), cascade, providers = list(fake_dist_provider()),
+        uf_biomes = sample_uf_biomes(), fetch = fetch_sp2_rate_limited
+    )
+
+    expect_equal(geo$gbif_failed, "Ccc ddd")
+    ps <- geo$per_species
+    expect_equal(ps$gbif_failed, c(FALSE, TRUE, FALSE))
+
+    dwc <- data.frame(
+        scientificName = accepted,
+        distributionFlag = unname(geo$distribution_flags),
+        stringsAsFactors = FALSE
+    )
+    v <- build_results_view(dwc, cascade, geo)
+
+    expect_type(v$gbif_failed, "logical")
+    expect_equal(v$gbif_failed, c(FALSE, TRUE, FALSE))
+    # The genuinely absent species and the unchecked one both count 0, so the
+    # count alone cannot tell them apart. The flag is what does.
+    expect_equal(v$gbif_count[2], v$gbif_count[3])
+})
+
+test_that("build_results_view reports gbif_failed as FALSE when there is no geo", {
+    dwc <- data.frame(scientificName = c("Aaa bbb", "Ccc ddd"),
+                      stringsAsFactors = FALSE)
+    v <- build_results_view(dwc, NULL, NULL)
+
+    expect_type(v$gbif_failed, "logical")
+    expect_false(any(v$gbif_failed))
+    expect_false(anyNA(v$gbif_failed))
+})
+
 # ---- multi-area ------------------------------------------------------------
 
 # Two areas far apart: the GBIF stub only puts a point inside the first one, so

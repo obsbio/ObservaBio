@@ -125,9 +125,8 @@ help_modal <- function() {
                         shiny::tags$b("área"), " também reenquadra o mapa na área escolhida."
                     ),
                     shiny::tags$li(
-                        "Clique numa linha para abrir o painel da espécie (taxonomia, ",
-                        "conservação, ocorrências) e use ", shiny::tags$b("Ver no mapa"),
-                        " para ir até os pontos dela."
+                        "Clique numa linha para abrir o painel da espécie: taxonomia, ",
+                        "conservação e quantas ocorrências ela tem dentro dos 10 km."
                     ),
                     shiny::tags$li(
                         "O badge ", shiny::tags$b("exótica invasora"), " aparece ao lado do ",

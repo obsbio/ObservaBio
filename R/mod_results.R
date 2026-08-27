@@ -139,7 +139,6 @@ mod_results_server <- function(id, result_r, visible_r = shiny::reactive(TRUE)) 
     shiny::moduleServer(id, function(input, output, session) {
         ns <- session$ns
         geo_r <- shiny::reactive(result_r()$geo)
-        focus_rv <- shiny::reactiveVal(NULL)
 
         # Per-record view feeding both the table and the side panel.
         view_r <- shiny::reactive({
@@ -190,7 +189,6 @@ mod_results_server <- function(id, result_r, visible_r = shiny::reactive(TRUE)) 
         # viewport is framed.
         mod_map_server(
             "map", geo_r = geo_r, visible_r = visible_r,
-            focus_r = shiny::reactive(focus_rv()),
             species_r = map_species_r,
             areas_r = shiny::reactive(filters_r()$areas)
         )
@@ -374,7 +372,16 @@ mod_results_server <- function(id, result_r, visible_r = shiny::reactive(TRUE)) 
                 class = paste("taxon-badge", tx$cls),
                 shiny::icon(tx$icon), tx$label
             )
-            gbif_txt <- if (is.na(row$gbif_count)) "—" else sprintf("%d registros", row$gbif_count)
+            # A species GBIF refused (rate limit) was never asked about, so it
+            # must not read like a species with no nearby record — that is the
+            # exact confusion LESSONS L-023 warns about.
+            gbif_txt <- if (isTRUE(row$gbif_failed)) {
+                "não consultado (limite GBIF)"
+            } else if (is.na(row$gbif_count)) {
+                "—"
+            } else {
+                sprintf("%d registros", row$gbif_count)
+            }
             shiny::tags$div(
                 class = "detail-panel",
                 shiny::tags$div(
@@ -405,26 +412,10 @@ mod_results_server <- function(id, result_r, visible_r = shiny::reactive(TRUE)) 
                         kv_threat("Conservação", row$status),
                         kv("GBIF ≤ 10 km", gbif_txt),
                         kv_invasive("Exótica invasora", row$invasive, row$invasiveSource)
-                    ),
-                    shiny::tags$div(
-                        style = "margin-top: var(--space-4);",
-                        shiny::actionButton(ns("ver_mapa"), "Ver no mapa",
-                                            class = "btn-outline-secondary",
-                                            icon = shiny::icon("location-dot"))
                     )
                 )
             )
         })
-
-        shiny::observeEvent(input$ver_mapa, {
-            sel <- input$table_rows_selected
-            if (is.null(sel) || length(sel) == 0L) {
-                return(invisible(NULL))
-            }
-            # Selection comes from the filtered table, so the focused species is
-            # always inside the filtered set the map is painting.
-            focus_rv(filtered_view_r()$scientificName[[sel]])
-        }, ignoreInit = TRUE)
 
         list(go = shiny::reactive(input$to_export))
     })

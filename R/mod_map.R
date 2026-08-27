@@ -67,8 +67,6 @@ occ_popup <- function(species, source, area = NULL) {
 #'   (or `NULL`).
 #' @param visible_r Reactive `TRUE` when the map's step is showing; the draw
 #'   re-runs on show so `fitBounds` sees the real (non-zero) map size.
-#' @param focus_r Optional reactive returning a species name to zoom to
-#'   ("Ver no mapa" from the side panel).
 #' @param species_r Optional reactive returning the species names to paint
 #'   (the Resultado filter). `NULL` — the default, and what an unfiltered screen
 #'   passes — paints every occurrence.
@@ -77,7 +75,7 @@ occ_popup <- function(species, source, area = NULL) {
 #' @return Invisibly NULL.
 #' @noRd
 mod_map_server <- function(id, geo_r, visible_r = shiny::reactive(TRUE),
-                           focus_r = NULL, species_r = NULL, areas_r = NULL) {
+                           species_r = NULL, areas_r = NULL) {
     shiny::moduleServer(id, function(input, output, session) {
 
         # Base skeleton only — no dynamic data here (Saira lesson).
@@ -181,34 +179,6 @@ mod_map_server <- function(id, geo_r, visible_r = shiny::reactive(TRUE),
                 group = "occ"
             )
         })
-
-        # "Ver no mapa" — zoom to a species' occurrences when asked.
-        if (!is.null(focus_r)) {
-            shiny::observeEvent(focus_r(), {
-                sp <- focus_r()
-                geo <- geo_r()
-                if (is.null(sp) || is.null(geo) || !is.data.frame(geo$occ)) {
-                    return(invisible(NULL))
-                }
-                pts <- geo$occ[as.character(geo$occ$species) == sp, , drop = FALSE]
-                proxy <- leaflet::leafletProxy(session$ns("map"))
-                if (nrow(pts) == 0L) {
-                    failed <- geo$gbif_failed
-                    msg <- if (!is.null(failed) && sp %in% failed) {
-                        paste0("Não foi possível consultar o GBIF para esta espécie ",
-                               "(limite de requisições). Processe novamente para tentar de novo.")
-                    } else {
-                        "Sem ocorrências GBIF a ≤ 10 km para esta espécie."
-                    }
-                    shiny::showNotification(msg, type = "message", duration = 5)
-                    return(invisible(NULL))
-                }
-                leaflet::flyToBounds(
-                    proxy, min(pts$decimalLongitude), min(pts$decimalLatitude),
-                    max(pts$decimalLongitude), max(pts$decimalLatitude)
-                )
-            }, ignoreInit = TRUE)
-        }
 
         invisible(NULL)
     })
