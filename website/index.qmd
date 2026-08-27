@@ -324,16 +324,36 @@ anchor-sections: false
     </nav>
   </div>
 
-  <!-- Crédito institucional. O wordmark do Observatório já vem em marfim
+  <!-- Ficha de créditos: três itens numa faixa só, centralizada. Os papéis são
+       distintos e ficam separados de propósito — quem realiza não é quem
+       desenvolve, e a licença não é nem uma coisa nem outra. Cada crédito é um
+       bloco próprio para que a quebra em tela estreita caia entre eles, nunca
+       entre um rótulo e o seu conteúdo. O wordmark do Observatório já vem em marfim
        (data-raw/prep_logo.py); o do iHumanize é arte preta e é invertido no
        CSS, como no rodapé da trilha do app. -->
   <div class="wrap footer-credits">
-    <span class="footer-label">Realização</span>
-    <div class="footer-logos">
-      <img class="footer-logo footer-logo--obs" src="assets/img/observatorio-claro.png"
-           alt="Observatório Biodiversidade" width="800" height="198">
-      <img class="footer-logo footer-logo--partner" src="assets/img/humanize.png"
-           alt="iHumanize" width="246" height="54">
+    <div class="footer-credit">
+      <span class="footer-label">Realização</span>
+      <div class="footer-logos">
+        <img class="footer-logo footer-logo--obs" src="assets/img/observatorio-claro.png"
+             alt="Observatório Biodiversidade" width="800" height="198">
+        <img class="footer-logo footer-logo--partner" src="assets/img/humanize.png"
+             alt="iHumanize" width="246" height="54">
+      </div>
+    </div>
+
+    <div class="footer-credit">
+      <span class="footer-label">Licença</span>
+      <p class="footer-credit-value">
+        <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3</a>
+      </p>
+    </div>
+
+    <div class="footer-credit">
+      <span class="footer-label">Desenvolvimento</span>
+      <p class="footer-credit-value">
+        <a href="https://github.com/rogerio-onza">Rogério Nunes Oliveira</a>
+      </p>
     </div>
   </div>
 </footer>
