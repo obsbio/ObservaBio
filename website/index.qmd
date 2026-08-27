@@ -22,15 +22,24 @@ anchor-sections: false
     <h1 class="hero-title">Observa<span class="accent">Bio</span></h1>
     <span class="eyebrow">Aplicativo R/Shiny · PT-BR</span>
     <div class="hero-actions">
-      <!-- Sem destino ainda, então o botão é um controle desabilitado de
-           verdade: não recebe foco e não responde ao clique. Um <a href="#">
-           continuaria clicável e só rolaria a página para o topo.
-           TODO: trocar por <a class="btn btn-primary" href="URL"> quando a
-           publicação for definida. -->
+      <!-- PUBLICAÇÃO — LIGAR O BOTÃO PRINCIPAL
+           O app ainda não tem endereço. Enquanto não tiver, isto é um controle
+           desabilitado de verdade: não recebe foco e não responde ao clique. Um
+           <a href="#"> continuaria clicável e rolaria a página para o topo, o
+           que é pior do que não fazer nada.
+
+           Quando a publicação no Connect Cloud existir, troque a linha marcada
+           CTA-APP logo abaixo por esta, com a URL no lugar:
+
+               <a class="btn btn-primary" href="https://SUA-URL">Abrir o ObservaBio</a>
+
+           depois apague o <p class="hero-note"> e rode `quarto render` dentro
+           de website/. Passo a passo completo em docs/manutencao.md. -->
+      <!-- CTA-APP -->
       <button class="btn btn-primary" type="button" disabled>Abrir o ObservaBio</button>
       <a class="btn btn-ghost" href="#distribuicao">Ver como funciona</a>
     </div>
-    <p class="hero-note">O endereço do app entra aqui assim que a publicação for definida.</p>
+    <p class="hero-note">O ObservaBio ainda não está no ar. Assim que a publicação for concluída, este botão abre o app.</p>
   </div>
 
   <!-- A faixa da esteira sangra até as bordas da tela. O canvas cobre esta
@@ -314,6 +323,7 @@ anchor-sections: false
       <a href="https://www.sibbr.gov.br">SiBBr</a>
     </nav>
   </div>
+
   <!-- Crédito institucional. O wordmark do Observatório já vem em marfim
        (data-raw/prep_logo.py); o do iHumanize é arte preta e é invertido no
        CSS, como no rodapé da trilha do app. -->

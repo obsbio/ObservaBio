@@ -139,9 +139,12 @@ pelo `build_pixels.py` — ver Pendências.
 
 ## Pendências
 
-- **URL do app.** O botão principal do herói está com `href="#"` e um `TODO` no
-  `index.qmd`. Trocar quando a publicação for definida, e apagar a nota
-  `.hero-note` logo abaixo dos botões.
+- **URL do app.** O botão principal do herói é um `<button disabled>` enquanto o
+  app não tem endereço. Para ligá-lo, procure o marcador `CTA-APP` no
+  `index.qmd`, troque aquela linha por
+  `<a class="btn btn-primary" href="https://SUA-URL">Abrir o ObservaBio</a>`,
+  apague o `<p class="hero-note">` logo abaixo e rode `quarto render`. O
+  comentário acima do marcador repete a instrução no próprio arquivo.
 - **Hospedagem.** Não há `site-url` no `_quarto.yml`, de propósito: sem ele tudo
   fica relativo e o `_site/` abre local. Ao publicar no GitHub Pages, acrescentar
   `site-url` e `repo-url` em `_quarto.yml`.

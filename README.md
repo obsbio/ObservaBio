@@ -1,4 +1,4 @@
-# observabio
+# ObservaBio
 
 Aplicação web (R + Shiny, PT-BR) que padroniza listas de espécies para o padrão
 **Darwin Core** e valida os nomes contra as autoridades brasileiras (**Flora do
@@ -70,6 +70,15 @@ termos de quem as publica. Ver `NOTICE.md`.
 
 ## Documentação de projeto
 
-O registro de decisões (ADRs), as lições aprendidas e a especificação **não são
-versionados** — ficam em `docs/` e `SPEC.md` apenas nesta máquina, por decisão do
-autor. Não há backup deles no GitHub.
+O registro de decisões (ADRs), as lições aprendidas, a especificação e os manuais
+**não são versionados** — ficam em `docs/` e `SPEC.md` apenas nesta máquina, por
+decisão do autor. Não há backup deles no GitHub.
+
+| Documento | Assunto |
+| --- | --- |
+| `docs/guia_de_uso.md` | Usar a ferramenta pelo navegador |
+| `docs/manutencao.md` | Rodar, modificar e publicar o app |
+| `docs/atualizacao_bases.md` | Atualizar as bases embutidas (anual) |
+| `docs/nova_base.md` | Acrescentar uma base taxonômica |
+| `docs/architecture.md`, `docs/DECISIONS.md`, `docs/LESSONS.md` | Como está montado, por quê, e as armadilhas |
+| `docs/design.md`, `docs/deploy.md` | Sistema visual e runbook de publicação |
