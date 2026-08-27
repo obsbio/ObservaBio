@@ -216,7 +216,7 @@ run_geo_verification_one <- function(area, cascade,
 
     empty_ps <- data.frame(
         query_name = character(0), scientificName = character(0),
-        has_gbif = logical(0), gbif_count = integer(0),
+        has_gbif = logical(0), gbif_count = integer(0), gbif_failed = logical(0),
         state_match = logical(0), biome_match = logical(0),
         present = logical(0), distributionFlag = character(0),
         stringsAsFactors = FALSE
@@ -267,6 +267,11 @@ run_geo_verification_one <- function(area, cascade,
         scientificName = accepted,
         has_gbif = unname(has_gbif[accepted]),
         gbif_count = unname(gbif_count[accepted]),
+        # A rate-limited species was never asked about, so "0 occurrences" would
+        # be a lie. Carry the distinction per row: the result list also holds it
+        # as `gbif_failed`, but that vector is keyed by accepted name and the UI
+        # reads this frame (LESSONS L-023).
+        gbif_failed = unname(accepted %in% gbif_failed),
         state_match = unname(state_m[accepted]),
         biome_match = unname(biome_m[accepted]),
         present = unname(present[accepted]),
@@ -441,6 +446,7 @@ build_results_view <- function(dwc, cascade, geo = NULL,
             kingdom = character(0), taxonID = character(0), status = character(0),
             validator = character(0), matchType = character(0),
             distributionFlag = character(0), gbif_count = integer(0),
+            gbif_failed = logical(0),
             invasive = logical(0), invasiveSource = character(0),
             area = character(0),
             stringsAsFactors = FALSE
@@ -461,6 +467,7 @@ build_results_view <- function(dwc, cascade, geo = NULL,
     areas <- if (length(record_areas) == n) as.character(record_areas) else rep(NA_character_, n)
 
     gbif_count <- rep(NA_integer_, n)
+    gbif_failed <- rep(FALSE, n)
     if (!is.null(geo) && is.data.frame(geo$per_species) && nrow(geo$per_species) > 0L) {
         ps <- geo$per_species
         gi <- if ("area" %in% names(ps) && !all(is.na(areas))) {
@@ -469,6 +476,10 @@ build_results_view <- function(dwc, cascade, geo = NULL,
             match(keys, as.character(ps$query_name))
         }
         gbif_count <- ps$gbif_count[gi]
+        if ("gbif_failed" %in% names(ps)) {
+            failed <- as.logical(ps$gbif_failed[gi])
+            gbif_failed <- !is.na(failed) & failed
+        }
     }
 
     # `invasive` stays logical (TRUE/NA): the badge asks a yes/no question.
@@ -481,7 +492,7 @@ build_results_view <- function(dwc, cascade, geo = NULL,
         status = col(dwc, "status"),
         validator = validator, matchType = match_type,
         distributionFlag = col(dwc, "distributionFlag"),
-        gbif_count = gbif_count,
+        gbif_count = gbif_count, gbif_failed = gbif_failed,
         invasive = invasive, invasiveSource = col(dwc, "invasiveSource"),
         area = areas,
         stringsAsFactors = FALSE
