@@ -314,5 +314,17 @@ anchor-sections: false
       <a href="https://www.sibbr.gov.br">SiBBr</a>
     </nav>
   </div>
+  <!-- Crédito institucional. O wordmark do Observatório já vem em marfim
+       (data-raw/prep_logo.py); o do iHumanize é arte preta e é invertido no
+       CSS, como no rodapé da trilha do app. -->
+  <div class="wrap footer-credits">
+    <span class="footer-label">Realização</span>
+    <div class="footer-logos">
+      <img class="footer-logo footer-logo--obs" src="assets/img/observatorio-claro.png"
+           alt="Observatório Biodiversidade" width="800" height="198">
+      <img class="footer-logo footer-logo--partner" src="assets/img/humanize.png"
+           alt="iHumanize" width="246" height="54">
+    </div>
+  </div>
 </footer>
 ```

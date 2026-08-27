@@ -59,7 +59,7 @@ app_rail <- function() {
             class = "app-rail__brand",
             shiny::tags$img(
                 class = "app-rail__brandmark",
-                src = "www/img/obsbio.webp",
+                src = "www/img/observatorio-claro.png",
                 alt = "Observatório Biodiversidade"
             )
         ),

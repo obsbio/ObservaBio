@@ -18,14 +18,15 @@
 .app-rail__brand {
   margin-bottom: var(--space-10);
 }
-/* Branco sólido sobre o verde da trilha (a arte é preta). Sem a opacidade dos
-   logos do rodapé: aqui ele é a marca, não um crédito. */
+/* Sem filtro: data-raw/prep_logo.py já entrega a variante marfim + terracota
+   para o verde da trilha. Achatar a arte aqui (brightness(0) invert(1))
+   levaria o acento terracota junto. Sem a opacidade dos logos do rodapé:
+   aqui ele é a marca, não um crédito. */
 .app-rail__brandmark {
   display: block;
   width: 100%;
-  max-width: 200px;
+  max-width: 100%;
   height: auto;
-  filter: brightness(0) invert(1);
 }
 
 /* Section label above the trail ("Fluxo de validação"). */
@@ -137,7 +138,7 @@
   }
   .app-rail__brand { margin-bottom: 0; }
   /* Na faixa horizontal o wordmark é medido pela altura, não pela largura. */
-  .app-rail__brandmark { width: auto; height: 24px; }
+  .app-rail__brandmark { width: auto; height: 28px; }
   .app-rail__eyebrow { display: none; }
   .stepper { flex-direction: row; }
   .step__sub { display: none; }
