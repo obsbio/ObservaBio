@@ -115,6 +115,6 @@ gbif_provider <- function() {
         query = function(names, data = NULL) gbif_query(names),
         is_available = function() requireNamespace("rgbif", quietly = TRUE),
         load = function() invisible(NULL),
-        version = function() "GBIF Backbone Taxonomy (live)"
+        version = function() "ao vivo"
     )
 }

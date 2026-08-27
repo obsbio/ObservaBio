@@ -163,7 +163,8 @@ help_modal <- function() {
                 "badge de espécie exótica invasora: ele diz que o táxon consta de uma ",
                 "lista nacional, não que aquele registro seja, ali, um problema."
             )
-        )
+        ),
+        bases_versions_block("Bases de referência em uso")
     )
 }
 

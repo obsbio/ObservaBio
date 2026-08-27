@@ -38,3 +38,55 @@ read_base_meta <- function(rds_path) {
         error = function(e) fallback
     )
 }
+
+#' Version of every reference base the app ships with
+#'
+#' Two sources feed this. A registered provider answers through the contract, so
+#' a base added later appears here without this function changing. The layers
+#' that are not providers (the UF/biome geometry, the invasive lists, the MMA
+#' list) are read from their `*.meta.json` sidecars, because nothing queries them
+#' by name and they never join the cascade registry — but the client regenerates
+#' them on the same annual pass, so the app must report them too.
+#'
+#' Labels are PT-BR: this feeds the UI directly (SPEC §2.1), like the `label`
+#' field the providers already carry.
+#'
+#' @param providers Registered providers. Defaults to the registry.
+#' @return Data frame `label`/`version`, one row per base, providers first.
+#'   An unreadable version reads as an em dash rather than `NA`.
+#' @noRd
+reference_bases_versions <- function(providers = get_providers()) {
+    one <- function(label, version) {
+        if (length(version) != 1L) {
+            version <- NA_character_
+        }
+        data.frame(label = as.character(label), version = as.character(version),
+                   stringsAsFactors = FALSE)
+    }
+
+    from_provider <- lapply(providers, function(p) {
+        one(p$label, tryCatch(p$version(), error = function(e) NA_character_))
+    })
+
+    from_sidecar <- lapply(
+        list(
+            list(file = "br_uf_biomes.rds", label = "Estados e biomas (IBGE)"),
+            list(file = "invasive_species.rds", label = "Espécies exóticas invasoras"),
+            list(file = "sensitive_species.rds", label = "Lista de ameaçadas (MMA)")
+        ),
+        function(base) {
+            meta <- read_base_meta(br_extdata_path(base$file))
+            one(base$label, meta$version %||% NA_character_)
+        }
+    )
+
+    out <- do.call(rbind, c(from_provider, from_sidecar))
+    if (is.null(out) || nrow(out) == 0L) {
+        return(data.frame(label = character(0), version = character(0),
+                          stringsAsFactors = FALSE))
+    }
+    blank <- is.na(out$version) | !nzchar(trimws(out$version))
+    out$version[blank] <- "—"
+    rownames(out) <- NULL
+    out
+}

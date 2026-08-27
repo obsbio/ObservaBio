@@ -95,6 +95,36 @@ step_header <- function(n, step, title, note = NULL) {
     )
 }
 
+#' The versions of the embedded reference bases, as a compact block.
+#'
+#' Rendered on Step 2, where the bases are about to be queried, and in the
+#' "Como usar" modal, which is reachable from any step. After the annual base
+#' update (docs/atualizacao_bases.md) the team confirms on screen that the new
+#' data went live, instead of trusting the procedure.
+#'
+#' The bases cannot change while the app runs, so this is built once at boot
+#' with the rest of the UI.
+#' @noRd
+bases_versions_block <- function(label = "Bases de referência") {
+    rows <- reference_bases_versions()
+    if (nrow(rows) == 0L) {
+        return(NULL)
+    }
+    shiny::tags$div(
+        class = "bases-versions",
+        shiny::tags$span(class = "bases-versions__label", label),
+        shiny::tags$ul(
+            class = "bases-versions__list",
+            lapply(seq_len(nrow(rows)), function(i) {
+                shiny::tags$li(
+                    shiny::tags$span(class = "bases-versions__name", rows$label[[i]]),
+                    shiny::tags$span(class = "bases-versions__ver", rows$version[[i]])
+                )
+            })
+        )
+    )
+}
+
 #' Build the ObservaBio Shiny UI
 #'
 #' @return A `bslib::page` UI object.
