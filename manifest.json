@@ -3432,7 +3432,7 @@
       "checksum": "2cf0779a3f1e4f44293d51e28046d30d"
     },
     "inst/app/www/css/04-components.css": {
-      "checksum": "ca83e9400a4c64c268b3660e973bf187"
+      "checksum": "db07482f3f6ccdfd86991acdd47d1f95"
     },
     "inst/app/www/css/05-badges.css": {
       "checksum": "ed6bd70c3d2bb1481b4c7daa9f1de732"
@@ -3447,7 +3447,7 @@
       "checksum": "d87708f3d16c80eac1be1f0680c14376"
     },
     "inst/app/www/custom.css": {
-      "checksum": "9ce814a0c92add1e80e5e9111979a560"
+      "checksum": "bdf4379437a5ce84cbc01b486a794a14"
     },
     "inst/app/www/img/humanize.png": {
       "checksum": "782876993795c7acb6828f99eac3ac64"
@@ -3488,6 +3488,9 @@
     "inst/extdata/invasive_species.rds": {
       "checksum": "dd859abcbc8bcdb99d8ff72ca4ed8514"
     },
+    "inst/extdata/sensitive_species.meta.json": {
+      "checksum": "7bf2097be5c932f3aba542b4cffd7786"
+    },
     "inst/extdata/sensitive_species.rds": {
       "checksum": "5c3e3671ad85764a23fdd70a0519c5bb"
     },
@@ -3504,7 +3507,7 @@
       "checksum": "1a7b9741f6921a7fc26963c43027482a"
     },
     "R/app_ui.R": {
-      "checksum": "8fb8b1b6b340d67c8f52bd496fb02d63"
+      "checksum": "2e52b8c53a57e3d78b3c078aa0e70eed"
     },
     "R/mod_export.R": {
       "checksum": "fca4fc5d373ef5d78402f91f644f93a8"
@@ -3513,13 +3516,13 @@
       "checksum": "06705c3e0c8df6caf786df6e16ce9575"
     },
     "R/mod_help.R": {
-      "checksum": "7dd4f2cc51832a05ef2402948706694f"
+      "checksum": "f09b0cbab195c16addd6ea5a5ae2201e"
     },
     "R/mod_map.R": {
       "checksum": "f26bca97caf3be7e3df031ba36bc2631"
     },
     "R/mod_process.R": {
-      "checksum": "4063b01fc5e784b39500913a8fac5058"
+      "checksum": "17f82bf45e06bbdf9b9bd0d0dc6b8551"
     },
     "R/mod_results.R": {
       "checksum": "b8157793b6227c2b05ae02d32c1f181d"
@@ -3546,7 +3549,7 @@
       "checksum": "7058672ad4cd3ebbcbe34bf7394b92e8"
     },
     "R/provider_gbif.R": {
-      "checksum": "f613b18d0bf685ab4e4961f842f25871"
+      "checksum": "b7e5394c634f68575b249ff972a65811"
     },
     "R/provider_registry.R": {
       "checksum": "0bd3216ff8221ada400dfc61a60da569"
@@ -3597,7 +3600,7 @@
       "checksum": "6636fbe74ec357317b9da1b967df7ef1"
     },
     "R/utils_version.R": {
-      "checksum": "9aeb8df6d7c241741938746c52f76047"
+      "checksum": "c34a1c25d10e3873a974c2b2ccf5a5e3"
     },
     "renv.lock": {
       "checksum": "4e7b904cb8d31c8cbb995c206fa34d3c"

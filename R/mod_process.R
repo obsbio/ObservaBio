@@ -40,6 +40,7 @@ mod_process_ui <- function(id) {
                         phase("③", "Verificação geográfica (buffer 10 km)"),
                         phase("④", "Montagem Darwin Core")
                     ),
+                    bases_versions_block(),
                     shiny::actionButton(
                         ns("processar"), "Iniciar processamento",
                         class = "btn-primary btn-lg", icon = shiny::icon("play")

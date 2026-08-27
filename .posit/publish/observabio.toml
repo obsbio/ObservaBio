@@ -69,6 +69,7 @@ files = [
     "/inst/extdata/florabr_observabio.rds",
     "/inst/extdata/invasive_species.meta.json",
     "/inst/extdata/invasive_species.rds",
+    "/inst/extdata/sensitive_species.meta.json",
     "/inst/extdata/sensitive_species.rds",
     "/.posit/publish/observabio.toml",
 ]

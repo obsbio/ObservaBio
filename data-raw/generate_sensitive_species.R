@@ -12,7 +12,7 @@
 #   CR (PE) -- same meaning -- and it is canonicalized to CR (PEX) below.
 #   Extinct tags (EX, RE, EW) are intentionally excluded from masking.
 #
-# Output: inst/extdata/sensitive_species.rds
+# Output: inst/extdata/sensitive_species.rds (+ .meta.json sidecar)
 #   A table with columns scientificName, match_key, category
 #   (VU/EN/CR/CR (PEX)) and source (the portaria that listed the taxon),
 #   deduped by match_key keeping the most restrictive category. The
@@ -28,6 +28,7 @@ pkgload::load_all(".", quiet = TRUE)
 
 src_path <- file.path("data-raw", "redlist_brasil_mma.md")
 out_path <- file.path("inst", "extdata", "sensitive_species.rds")
+meta_path <- base_meta_path(out_path)
 
 lines <- readLines(src_path, encoding = "UTF-8", warn = FALSE)
 
@@ -161,7 +162,25 @@ dir.create(
 )
 saveRDS(sensitive_species, file = out_path, version = 2)
 
+# Every other embedded base carries a version sidecar, and the app now reads all
+# of them to report which reference data is live. The portarias are what
+# identifies this list, so they are the version.
+n_by_source <- as.list(table(sensitive_species$source))
+jsonlite::write_json(
+  list(
+    base = "sensitive_species",
+    version = paste(sub("^Portaria ", "", unname(annex_source)), collapse = " + "),
+    date = format(Sys.Date(), "%Y-%m-%d"),
+    source = "Lista Nacional de Especies Ameacadas (MMA), via data-raw/redlist_brasil_mma.md",
+    portarias = unname(annex_source),
+    n_species = nrow(sensitive_species),
+    n_by_source = n_by_source
+  ),
+  meta_path, auto_unbox = TRUE, pretty = TRUE
+)
+
 message(sprintf(
   "Saved %d sensitive species (from %d parsed names) to %s",
   nrow(sensitive_species), length(raw_names), out_path
 ))
+message(sprintf("Wrote %s", meta_path))

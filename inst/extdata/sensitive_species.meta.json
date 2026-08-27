@@ -1,0 +1,13 @@
+{
+  "base": "sensitive_species",
+  "version": "148/2022 + 1.704/2026 + 1.667/2026",
+  "date": "2026-08-26",
+  "source": "Lista Nacional de Especies Ameacadas (MMA), via data-raw/redlist_brasil_mma.md",
+  "portarias": ["Portaria 148/2022", "Portaria 1.704/2026", "Portaria 1.667/2026"],
+  "n_species": 4486,
+  "n_by_source": {
+    "Portaria 1.667/2026": 490,
+    "Portaria 1.704/2026": 789,
+    "Portaria 148/2022": 3207
+  }
+}
