@@ -274,11 +274,12 @@ anchor-sections: false
 
     <div class="outputs">
       <article class="output">
-        <h3>Dados padronizados</h3>
+        <h3>Dados validados</h3>
         <p>
-          A sua planilha em Darwin Core, com os nomes aceitos, os autores, a
-          classificação e o status de conservação preenchidos. É esse arquivo que
-          segue para o SiBBr, para o GBIF ou para o relatório.
+          A sua planilha de volta, com os nomes aceitos, os autores, a
+          classificação e o status de conservação preenchidos nas colunas do
+          Darwin Core. É esse arquivo que segue para o SiBBr, para o GBIF ou
+          para o relatório.
         </p>
       </article>
       <article class="output">
@@ -298,7 +299,7 @@ anchor-sections: false
   <div class="wrap footer-grid">
     <div class="footer-brand">
       <p class="footer-name">Observa<span class="accent">Bio</span></p>
-      <p class="footer-tag">Padronização e validação Darwin Core</p>
+      <p class="footer-tag">Validação de listas de espécies</p>
     </div>
     <nav class="footer-links" aria-label="Fontes de dados">
       <span class="footer-label">Fontes</span>
