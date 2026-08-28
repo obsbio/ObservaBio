@@ -111,6 +111,12 @@
 .dropzone .shiny-file-input-active,
 .dropzone .shiny-file-input-over { box-shadow: none; }
 .dropzone .input-group > .form-control { display: none; }
+/* Every wrapper between the zone and .btn-file must stay static, or the stretched
+   label gets the wrapper as its containing block instead of the zone. Bootstrap 5
+   makes .input-group relative, and that box collapses to zero height here (its
+   only in-flow child, the text field above, is hidden) — so the picker label
+   became a 0 px target and a click on the zone opened nothing. */
+.dropzone .input-group,
 .dropzone .input-group-btn,
 .dropzone .input-group-prepend { position: static; }
 .dropzone .btn-file {
