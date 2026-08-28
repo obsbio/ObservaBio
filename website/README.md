@@ -135,19 +135,19 @@ esteira e o exemplo da seção de verificação geográfica, verificável na bas
 não inventado.
 
 O favicon (`assets/img/favicon.svg`) ainda é o rosto do lobo em 16×16 desenhado
-pelo `build_pixels.py` — ver Pendências.
+pelo `build_pixels.py`.
+
+## O botão do herói
+
+O botão "Abrir o ObservaBio" aponta para o app publicado no Posit Connect Cloud:
+`https://obsbio-observabio.share.connect.posit.cloud/`. O endereço vem da conta
+que publica e do nome do conteúdo, então republicar por outra conta muda a URL.
+A linha está marcada com `CTA-APP` no `index.qmd`. Editar só o `index.qmd`
+basta: `_site/` não é versionado, e o workflow `deploy-site` renderiza a página
+a cada push em `website/**`.
 
 ## Pendências
 
-- **URL do app.** O botão principal do herói é um `<button disabled>` enquanto o
-  app não tem endereço. Para ligá-lo, procure o marcador `CTA-APP` no
-  `index.qmd`, troque aquela linha por
-  `<a class="btn btn-primary" href="https://SUA-URL">Abrir o ObservaBio</a>`,
-  apague o `<p class="hero-note">` logo abaixo e rode `quarto render`. O
-  comentário acima do marcador repete a instrução no próprio arquivo.
-- **Hospedagem.** Não há `site-url` no `_quarto.yml`, de propósito: sem ele tudo
-  fica relativo e o `_site/` abre local. Ao publicar no GitHub Pages, acrescentar
-  `site-url` e `repo-url` em `_quarto.yml`.
 - **Favicon.** Com a arte do lobo fora da página, a aba do navegador é a única
   coisa que ainda mostra um lobo-guará. Decidir se ele fica como assinatura da
   marca ou se dá lugar a uma marca ligada à esteira; trocar significa redesenhar

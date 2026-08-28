@@ -22,24 +22,12 @@ anchor-sections: false
     <h1 class="hero-title">Observa<span class="accent">Bio</span></h1>
     <span class="eyebrow">Aplicativo R/Shiny · PT-BR</span>
     <div class="hero-actions">
-      <!-- PUBLICAÇÃO — LIGAR O BOTÃO PRINCIPAL
-           O app ainda não tem endereço. Enquanto não tiver, isto é um controle
-           desabilitado de verdade: não recebe foco e não responde ao clique. Um
-           <a href="#"> continuaria clicável e rolaria a página para o topo, o
-           que é pior do que não fazer nada.
-
-           Quando a publicação no Connect Cloud existir, troque a linha marcada
-           CTA-APP logo abaixo por esta, com a URL no lugar:
-
-               <a class="btn btn-primary" href="https://SUA-URL">Abrir o ObservaBio</a>
-
-           depois apague o <p class="hero-note"> e rode `quarto render` dentro
-           de website/. Passo a passo completo em docs/manutencao.md. -->
-      <!-- CTA-APP -->
-      <button class="btn btn-primary" type="button" disabled>Abrir o ObservaBio</button>
+      <!-- CTA-APP — o app publicado no Posit Connect Cloud. A URL vem da conta
+           e do nome do conteúdo: republicar por outra conta muda o endereço.
+           Passo a passo em docs/manutencao.md, seção 5.3. -->
+      <a class="btn btn-primary" href="https://obsbio-observabio.share.connect.posit.cloud/">Abrir o ObservaBio</a>
       <a class="btn btn-ghost" href="#distribuicao">Ver como funciona</a>
     </div>
-    <p class="hero-note">O ObservaBio ainda não está no ar. Assim que a publicação for concluída, este botão abre o app.</p>
   </div>
 
   <!-- A faixa da esteira sangra até as bordas da tela. O canvas cobre esta
