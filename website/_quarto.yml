@@ -14,9 +14,12 @@ website:
   favicon: assets/img/favicon.svg
   open-graph: true
   page-navigation: false
-  # Página única: sem navbar, sem sidebar, sem busca. O site-url entra quando a
-  # hospedagem no GitHub Pages estiver definida — até lá, tudo em caminho
-  # relativo para que `_site/index.html` abra direto do disco.
+  # Página única: sem navbar, sem sidebar, sem busca.
+  # O site-url só alimenta as tags open-graph e o canonical. Os caminhos da
+  # página seguem relativos, então `_site/index.html` continua abrindo direto
+  # do disco.
+  site-url: https://obsbio.github.io/ObservaBio/
+  repo-url: https://github.com/obsbio/ObservaBio
 
 format:
   html:
