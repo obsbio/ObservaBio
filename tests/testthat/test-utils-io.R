@@ -131,3 +131,47 @@ test_that("read_ObservaBio_table rejects an unsupported format", {
     writeLines("x", path)
     expect_error(read_ObservaBio_table(path), "suportado")
 })
+
+# ---- Audit 2026-11-08: A13, A14 --------------------------------------------
+
+write_lines_tmp <- function(lines, ext) {
+    p <- tempfile(fileext = paste0(".", ext))
+    writeLines(lines, p, useBytes = TRUE)
+    p
+}
+
+test_that("commas in quoted cells do not decide the delimiter (A13)", {
+    p <- write_lines_tmp(c(
+        "scientificName;occurrenceRemarks",
+        "Paubrasilia echinata;\"a,b,c,d,e,f\"",
+        "Araucaria angustifolia;\"g,h,i,j,k,l\""
+    ), "csv")
+    on.exit(unlink(p), add = TRUE)
+    out <- read_ObservaBio_table(p)
+    expect_equal(out$model_cols, c("scientificName", "occurrenceRemarks"))
+    expect_equal(out$records$occurrenceRemarks, c("a,b,c,d,e,f", "g,h,i,j,k,l"))
+})
+
+test_that("a quoted cell with a line break stays one cell (A13)", {
+    p <- write_lines_tmp(c(
+        "scientificName;occurrenceRemarks",
+        "Paubrasilia echinata;\"linha 1, a",
+        "linha 2, b, c, d\"",
+        "Araucaria angustifolia;x"
+    ), "csv")
+    on.exit(unlink(p), add = TRUE)
+    out <- read_ObservaBio_table(p)
+    expect_equal(nrow(out$records), 2L)
+    expect_equal(out$records$scientificName[[2]], "Araucaria angustifolia")
+})
+
+test_that("a .tsv file uses tab when tab gives the header (A13)", {
+    expect_equal(sniff_delimiter(c("scientificName\tnote", "Aus bus\ta;b;c;d"),
+                                 ext = "tsv"), "\t")
+})
+
+test_that("duplicate headers stop the import with names and positions (A14)", {
+    p <- write_lines_tmp(c("scientificName;family;family ", "Aus bus;First;Second"), "csv")
+    on.exit(unlink(p), add = TRUE)
+    expect_error(read_ObservaBio_table(p), "family \\(colunas 2, 3\\)")
+})
