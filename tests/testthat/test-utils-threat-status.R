@@ -514,3 +514,18 @@ test_that("the session key never reaches the console or the output columns", {
     flat <- unlist(lapply(out, as.character))
     expect_false(any(grepl("SECRET-KEY", flat, fixed = TRUE)))
 })
+
+# ---- Audit 2026-11-08: A10, A15, A16 ---------------------------------------
+
+test_that("mma_load_data stops when the base cannot load (A16)", {
+    .mma_cache$reset()
+    on.exit(.mma_cache$reset(), add = TRUE)
+    testthat::local_mocked_bindings(
+        br_extdata_path = function(filename) tempfile(fileext = ".rds")
+    )
+    expect_error(mma_lookup("Paubrasilia echinata"), "MMA base not found")
+    bad <- tempfile(fileext = ".rds")
+    saveRDS(data.frame(x = 1), bad)
+    testthat::local_mocked_bindings(br_extdata_path = function(filename) bad)
+    expect_error(mma_lookup("Paubrasilia echinata"), "empty or has no")
+})

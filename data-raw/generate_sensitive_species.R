@@ -2,20 +2,24 @@
 #
 # Source: data-raw/redlist_brasil_mma.md
 #   Official MMA Brazilian national list of threatened species, a Markdown
-#   table built from three DOU portarias: flora (ANEXO 1) from Portaria MMA
-#   no 148 de 2022 (updates Portaria 443/2014); terrestrial fauna (ANEXO 2)
+#   table built from three DOU portarias: flora (ANEXO 1) from Portaria GM/MMA
+#   no 1.783 de 2026 (alters Portaria 443/2014 and revokes Portaria 148/2022,
+#   DOU of 2026-10-28, 3730 rows); terrestrial fauna (ANEXO 2)
 #   from Portaria MMA no 1.704 de 2026 (updates Portaria 444/2014); aquatic
 #   fauna (ANEXO 3) from Portaria GM/MMA no 1.667 de 2026 (revokes 445/2014).
 #   Row layouts vary by annex, but the species name is always the
 #   second-to-last cell and the category the last cell. Threatened categories
-#   are VU, EN, CR and CR (PEX); the 2026 fauna lists spell the last one
+#   are VU, EN, CR and CR (PEX); the 2026 lists spell the last one
 #   CR (PE) -- same meaning -- and it is canonicalized to CR (PEX) below.
 #   Extinct tags (EX, RE, EW) are intentionally excluded from masking.
 #
 # Output: inst/extdata/sensitive_species.rds (+ .meta.json sidecar)
 #   A table with columns scientificName, match_key, category
 #   (VU/EN/CR/CR (PEX)) and source (the portaria that listed the taxon),
-#   deduped by match_key keeping the most restrictive category. The
+#   deduped by match_key keeping the most restrictive category. Each annex
+#   comes from one portaria in force, so the tie-break never keeps a category
+#   from a revoked list. To update an annex, replace its block in the source
+#   file. Do not append the new list to the old one. The
 #   match_key uses the SAME normalization the name validator applies, so
 #   the list and validated names compare identically. The category drives
 #   the per-record generalization grid on export (ADR-092); the source
@@ -82,7 +86,7 @@ parse_row <- function(line) {
 # three standalone section markers ("ANEXO 1/2/3"); track which annex each row
 # falls under so the export can cite the portaria a taxon's listing comes from.
 annex_source <- c(
-  "1" = "Portaria 148/2022",   # ANEXO 1 - flora (Portaria MMA 148/2022)
+  "1" = "Portaria 1.783/2026", # ANEXO 1 - flora (Portaria GM/MMA 1.783/2026)
   "2" = "Portaria 1.704/2026", # ANEXO 2 - fauna terrestre (Portaria MMA 1.704/2026)
   "3" = "Portaria 1.667/2026"  # ANEXO 3 - fauna aquatica (Portaria GM/MMA 1.667/2026)
 )
@@ -106,9 +110,20 @@ raw_names <- vapply(parsed, function(x) unname(x[["species"]]), character(1L))
 raw_cats <- vapply(parsed, function(x) unname(x[["category"]]), character(1L))
 raw_source <- vapply(parsed, function(x) unname(x[["source"]]), character(1L))
 
-# The 2026 fauna portarias spell "possibly extinct" CR (PE); the flora list
-# (and the rest of the app, i18n included) uses CR (PEX). Same meaning, so
-# canonicalize to a single label that flows unchanged downstream.
+# Row counts of the published annexes. A different count means the parser lost
+# or invented rows, and the app would then miss threatened species silently.
+expected_rows <- c("Portaria 1.783/2026" = 3730L)
+for (src in names(expected_rows)) {
+  got <- sum(raw_source == src)
+  if (got != expected_rows[[src]]) {
+    stop(sprintf("%s: parsed %d rows, the annex has %d.", src, got,
+                 expected_rows[[src]]))
+  }
+}
+
+# The 2026 portarias spell "possibly extinct" CR (PE); the rest of the app
+# uses CR (PEX). Same meaning, so canonicalize to a single label that flows
+# unchanged downstream.
 raw_cats[raw_cats == "CR (PE)"] <- "CR (PEX)"
 
 # Same normalization the validator uses, so list and validated names match.
