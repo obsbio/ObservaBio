@@ -1,7 +1,8 @@
 # Title: Conservation Status (MMA + IUCN)
 # Two independent status sources (SPEC §5):
-#   - MMA: offline lookup against the embedded sensitive_species.rds (Portaria
-#     148/2022 + correlatas), matched by normalized key; most restrictive wins.
+#   - MMA: offline lookup against the embedded sensitive_species.rds (Portarias
+#     1.783/2026, 1.704/2026 and 1.667/2026), matched by normalized key; most
+#     restrictive wins. A failure to load the base stops the run (A16).
 #   - IUCN: global Red List category via GBIF's keyless species API (ported from
 #     Saira utils_threat_status.R). Every IUCN path degrades to NA — httr2 error,
 #     offline, or an unexpected payload must never break the pipeline.
@@ -9,7 +10,7 @@
 # process shares, so anything key-dependent must be namespaced (ADR-005).
 
 # ---------------------------------------------------------------------------
-# MMA (Portaria 148/2022 + correlatas) — offline
+# MMA (Portarias 1.783/2026 + 1.704/2026 + 1.667/2026) — offline
 # ---------------------------------------------------------------------------
 
 .mma_cache <- create_rds_cache("mma_sensitive")
@@ -18,6 +19,10 @@
 .mma_severity <- c("CR (PEX)" = 5L, "CR" = 4L, "EN" = 3L, "VU" = 2L, "NT" = 1L)
 
 #' Load and cache the embedded MMA sensitive-species base
+#'
+#' Stops when the file is missing, unreadable or has the wrong shape. An empty
+#' answer would make every species look not listed, and the run would look
+#' complete (audit A16).
 #'
 #' @return Data frame with `scientificName`, `match_key`, `category`, `source`.
 #' @noRd
@@ -30,7 +35,14 @@ mma_load_data <- function() {
     if (!file.exists(path)) {
         stop(sprintf("MMA base not found at '%s'. Run data-raw/generate_sensitive_species.R.", path))
     }
-    data <- readRDS(path)
+    data <- tryCatch(readRDS(path), error = function(e) {
+        stop(sprintf("MMA base at '%s' is not readable: %s", path, conditionMessage(e)))
+    })
+    needed <- c("scientificName", "match_key", "category", "source")
+    if (!is.data.frame(data) || nrow(data) == 0L || !all(needed %in% names(data))) {
+        stop(sprintf("MMA base at '%s' is empty or has no %s column.", path,
+                     paste(needed, collapse = "/")))
+    }
     .mma_cache$set(data)
     data
 }
@@ -56,10 +68,7 @@ mma_lookup <- function(scientific_names) {
         return(out)
     }
 
-    data <- tryCatch(mma_load_data(), error = function(e) NULL)
-    if (is.null(data) || nrow(data) == 0L) {
-        return(out)
-    }
+    data <- mma_load_data()
 
     keys <- normalize_for_matching(scientific_names)
     data_sev <- unname(.mma_severity[data$category])
