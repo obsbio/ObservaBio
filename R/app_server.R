@@ -54,10 +54,16 @@ app_server <- function(input, output, session) {
         go_to(2L)
     }, ignoreInit = TRUE)
 
-    # Step 2 → 3: processing produced a result.
+    # Step 2 → 3: processing produced a result. A cleared result (new upload or
+    # failed run) locks steps 3 and 4 again, so no stale result stays in view.
     shiny::observeEvent(result_r(), {
+        if (is.null(result_r())) {
+            reached_rv(min(reached_rv(), 2L))
+            if (step_rv() > 2L) step_rv(2L)
+            return(invisible(NULL))
+        }
         go_to(3L)
-    }, ignoreInit = TRUE, ignoreNULL = TRUE)
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
     # Step 3 → 4: Ir para exportação.
     shiny::observeEvent(results$go(), {
