@@ -218,7 +218,7 @@ run_geo_verification_one <- function(area, cascade,
     empty_ps <- data.frame(
         query_name = character(0), scientificName = character(0),
         has_gbif = logical(0), gbif_count = integer(0), gbif_failed = logical(0),
-        state_match = logical(0), biome_match = logical(0),
+        gbif_status = character(0), state_match = logical(0), biome_match = logical(0),
         present = logical(0), distributionFlag = character(0),
         stringsAsFactors = FALSE
     )
@@ -241,12 +241,22 @@ run_geo_verification_one <- function(area, cascade,
 
     occ <- gbif_occ_in_buffer(uacc, buf$buffer, fetch = fetch)
     gbif_failed <- attr(occ, "failed") %||% character(0)           # names we could not check
+    gbif_cut <- attr(occ, "truncated") %||% character(0)           # names with a partial answer
     has_gbif <- gbif_occ_presence(occ, uacc)                       # named by accepted
     counts <- if (nrow(occ) > 0L) table(as.character(occ$species)) else integer(0)
     gbif_count <- stats::setNames(
         vapply(uacc, function(a) as.integer(if (a %in% names(counts)) counts[[a]] else 0L),
                integer(1)), uacc
     )
+    gbif_status <- stats::setNames(rep("complete", length(uacc)), uacc)
+    gbif_status[uacc %in% gbif_cut] <- "truncated"
+    gbif_status[uacc %in% gbif_failed] <- "failed"
+    # A failed or partial search with no point is not an absence. NA keeps the
+    # flag from saying "no record near the area" (audit A08, A09). A partial
+    # search with a point is still a confirmation.
+    unknown <- gbif_status != "complete" & !has_gbif
+    has_gbif[unknown] <- NA
+    gbif_count[unknown] <- NA_integer_
 
     dist <- providers_distribution(uacc, providers)                # query_name(=accepted)
     dist_idx <- match(uacc, dist$query_name)
@@ -273,6 +283,7 @@ run_geo_verification_one <- function(area, cascade,
         # as `gbif_failed`, but that vector is keyed by accepted name and the UI
         # reads this frame (LESSONS L-023).
         gbif_failed = unname(accepted %in% gbif_failed),
+        gbif_status = unname(gbif_status[accepted]),
         state_match = unname(state_m[accepted]),
         biome_match = unname(biome_m[accepted]),
         present = unname(present[accepted]),
@@ -449,7 +460,7 @@ build_results_view <- function(dwc, cascade, geo = NULL,
             statusSource = character(0), statusIUCN = character(0),
             validator = character(0), matchType = character(0),
             distributionFlag = character(0), gbif_count = integer(0),
-            gbif_failed = logical(0),
+            gbif_failed = logical(0), gbif_status = character(0),
             invasive = logical(0), invasiveSource = character(0),
             area = character(0),
             stringsAsFactors = FALSE
@@ -479,6 +490,7 @@ build_results_view <- function(dwc, cascade, geo = NULL,
 
     gbif_count <- rep(NA_integer_, n)
     gbif_failed <- rep(FALSE, n)
+    gbif_status <- rep(NA_character_, n)
     if (!is.null(geo) && is.data.frame(geo$per_species) && nrow(geo$per_species) > 0L) {
         ps <- geo$per_species
         gi <- if ("area" %in% names(ps) && !all(is.na(areas))) {
@@ -490,6 +502,9 @@ build_results_view <- function(dwc, cascade, geo = NULL,
         if ("gbif_failed" %in% names(ps)) {
             failed <- as.logical(ps$gbif_failed[gi])
             gbif_failed <- !is.na(failed) & failed
+        }
+        if ("gbif_status" %in% names(ps)) {
+            gbif_status <- as.character(ps$gbif_status[gi])
         }
     }
 
@@ -505,6 +520,7 @@ build_results_view <- function(dwc, cascade, geo = NULL,
         validator = validator, matchType = match_type,
         distributionFlag = col(dwc, "distributionFlag"),
         gbif_count = gbif_count, gbif_failed = gbif_failed,
+        gbif_status = gbif_status,
         invasive = invasive, invasiveSource = col(dwc, "invasiveSource"),
         area = areas,
         stringsAsFactors = FALSE

@@ -429,7 +429,8 @@ audit_columns <- function() {
 #' Geo columns appended to the audit when a geo verification ran (SPEC §9)
 #' @noRd
 audit_geo_columns <- function() {
-    c("distributionFlag", "gbifRecords", "areaName", "areaStates", "areaBiomes")
+    c("distributionFlag", "gbifRecords", "gbifStatus", "areaName", "areaStates",
+      "areaBiomes")
 }
 
 #' Invasive cross-check columns, appended to both deliverables
@@ -512,7 +513,11 @@ audit_attach_geo <- function(audit, geo) {
 
     out <- audit[rep(seq_len(nrow(audit)), pmax(lengths(hits), 1L)), , drop = FALSE]
     out$distributionFlag <- ps_col("distributionFlag")
+    # gbifRecords is NA when the GBIF answer is not complete, and gbifStatus
+    # tells why: "failed" (no answer) or "truncated" (part of the records). An
+    # external audit must see this without the app (audit A08).
     out$gbifRecords <- suppressWarnings(as.integer(ps_col("gbif_count")))
+    out$gbifStatus <- ps_col("gbif_status")
     out$areaName <- ps_col("area")
     out$areaStates <- area_value(out$areaName, "area_states")
     out$areaBiomes <- area_value(out$areaName, "area_biomes")

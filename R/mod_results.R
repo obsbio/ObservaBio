@@ -379,10 +379,17 @@ mod_results_server <- function(id, result_r, visible_r = shiny::reactive(TRUE)) 
             # A species GBIF refused (rate limit) was never asked about, so it
             # must not read like a species with no nearby record — that is the
             # exact confusion LESSONS L-023 warns about.
+            # A partial GBIF answer (more records than one page) must not read
+            # like a complete count (audit A09).
+            partial <- identical(row$gbif_status, "truncated")
             gbif_txt <- if (isTRUE(row$gbif_failed)) {
                 "não consultado (limite GBIF)"
+            } else if (partial && is.na(row$gbif_count)) {
+                "consulta parcial (mais de 300 registros no GBIF)"
             } else if (is.na(row$gbif_count)) {
                 "—"
+            } else if (partial) {
+                sprintf("%d registros (consulta parcial)", row$gbif_count)
             } else {
                 sprintf("%d registros", row$gbif_count)
             }

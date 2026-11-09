@@ -389,7 +389,9 @@ gbif_occ_plan <- function(counts, limit, max_keys) {
 #' @return List of tables in the [gbif_occ_parse()] schema, one per pair, each
 #'   tagged with a `"gbif_error"` attribute: `TRUE` when the lookup failed,
 #'   `FALSE` when it succeeded (possibly with 0 rows). This lets callers tell
-#'   "we could not check" from "genuinely absent".
+#'   "we could not check" from "genuinely absent". A table that holds only the
+#'   first page of a taxon with more records also has `"gbif_truncated"` set to
+#'   `TRUE` (audit A09).
 #' @noRd
 gbif_occ_fetch_grouped <- function(names, wkts, max_records = 300L) {
     empty <- gbif_occ_parse(NULL)
@@ -437,12 +439,19 @@ gbif_occ_fetch_grouped <- function(names, wkts, max_records = 300L) {
     # facet counts has more records, some of them are lost: its taxa fail.
     got <- list()
     lost <- character(0)
+    # A taxon with more records than one page keeps the first page only. Its
+    # points can all be outside the exact buffer while a later page has one
+    # inside, so "no point" from such a page is not an answer.
+    cut <- character(0)
     for (i in seq_along(plan)) {
         ids <- paste(plan[[i]]$block, plan[[i]]$keys)
         body <- gbif_response_body(res[[i]])
         if (is.null(body) || (plan[[i]]$whole && !isTRUE(body$endOfRecords))) {
             lost <- c(lost, ids)
             next
+        }
+        if (!plan[[i]]$whole && !isTRUE(body$endOfRecords)) {
+            cut <- c(cut, ids)
         }
         rec <- gbif_occ_results(body)
         keymat <- if (is.null(rec)) NULL else as.matrix(rec[.GBIF_OCC_TAXON_FIELDS])
@@ -470,7 +479,9 @@ gbif_occ_fetch_grouped <- function(names, wkts, max_records = 300L) {
         if (is.null(counts[[b]]) || id %in% lost) {
             return(failed)
         }
-        .gbif_occ_flag_error(got[[id]] %||% empty, FALSE)
+        page <- .gbif_occ_flag_error(got[[id]] %||% empty, FALSE)
+        attr(page, "gbif_truncated") <- id %in% cut
+        page
     })
 }
 
@@ -540,7 +551,8 @@ gbif_occ_fetch_grouped <- function(names, wkts, max_records = 300L) {
 #' @return Data frame in the [gbif_occ_parse()] schema (all species combined),
 #'   tagged with a `"failed"` attribute: the character vector of names whose
 #'   lookup failed (rate-limited/offline). Failed names are NOT cached, so a
-#'   later re-run retries them.
+#'   later re-run retries them. The `"truncated"` attribute holds the names
+#'   that GBIF gave only in part (see [gbif_occ_fetch_grouped()]).
 #' @noRd
 gbif_occ_in_buffer <- function(names, buffer, max_records = 300L,
                                page_size = 300L, fetch = NULL,
@@ -594,13 +606,22 @@ gbif_occ_in_buffer <- function(names, buffer, max_records = 300L,
         if (nrow(pts) > 0L) {
             pts$species <- nm
         }
-        store[[nm]] <- .gbif_occ_dedupe(.gbif_occ_refine(pts, buffer))
+        entry <- .gbif_occ_dedupe(.gbif_occ_refine(pts, buffer))
+        # Set the mark after the subsets, because a data frame subset drops it.
+        attr(entry, "truncated") <- any(vapply(mine, function(p) {
+            isTRUE(attr(p, "gbif_truncated"))
+        }, logical(1)))
+        store[[nm]] <- entry
     }
 
+    truncated <- names_chr[vapply(names_chr, function(nm) {
+        isTRUE(attr(store[[nm]], "truncated"))
+    }, logical(1))]
     parts <- lapply(names_chr, function(nm) store[[nm]])
     parts <- parts[vapply(parts, function(p) !is.null(p) && nrow(p) > 0L, logical(1))]
     out <- if (length(parts) == 0L) empty else do.call(rbind, parts)
     attr(out, "failed") <- unique(failed)
+    attr(out, "truncated") <- truncated
     out
 }
 
