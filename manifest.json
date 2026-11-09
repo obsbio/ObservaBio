@@ -3417,7 +3417,7 @@
       "checksum": "0ae5a301b9565c7ca66c52d84f086d43"
     },
     "DESCRIPTION": {
-      "checksum": "1c6074f2b0d0e1978ad1cc229a2f1d21"
+      "checksum": "c2227edbc34eb723c402ca72ec79d9fe"
     },
     "inst/app/www/css/00-tokens.css": {
       "checksum": "6cf81e8ef0bf2f029b147212c8c18760"
@@ -3489,10 +3489,10 @@
       "checksum": "dd859abcbc8bcdb99d8ff72ca4ed8514"
     },
     "inst/extdata/sensitive_species.meta.json": {
-      "checksum": "7bf2097be5c932f3aba542b4cffd7786"
+      "checksum": "04ed257fdfed58a93fb71b17ed5dffea"
     },
     "inst/extdata/sensitive_species.rds": {
-      "checksum": "5c3e3671ad85764a23fdd70a0519c5bb"
+      "checksum": "89fbf1539389395b12f9c325eb3fb040"
     },
     "LICENSE.md": {
       "checksum": "1ebbd3e34237af26da5dc08a4e440464"
@@ -3507,7 +3507,7 @@
       "checksum": "82b9c03f524a0e1d6c10dde0ca3cf765"
     },
     "R/app_server.R": {
-      "checksum": "1a7b9741f6921a7fc26963c43027482a"
+      "checksum": "cba7981c958a7b33175446578e6804aa"
     },
     "R/app_ui.R": {
       "checksum": "2e52b8c53a57e3d78b3c078aa0e70eed"
@@ -3525,82 +3525,82 @@
       "checksum": "4d21aa2f585df8cc70e28898d8577031"
     },
     "R/mod_process.R": {
-      "checksum": "17f82bf45e06bbdf9b9bd0d0dc6b8551"
+      "checksum": "73736dcdb2e2b44dacf5be4e4936411d"
     },
     "R/mod_results.R": {
-      "checksum": "8b0d1f116986691cd8d5b2bce4047c87"
+      "checksum": "2d7ae3449a90011098c820be6d931426"
     },
     "R/mod_stepper.R": {
       "checksum": "cb6b2bf183ef0122ad4e1debb9d2bb97"
     },
     "R/mod_upload.R": {
-      "checksum": "8f591f4c65667e357b8cfdade6b0f57d"
+      "checksum": "ef8fb562d8b0e61b244d15c4caf0d94f"
     },
     "R/ObservaBio-package.R": {
       "checksum": "53d5a526d41da44b2bf0e73ea9db634f"
     },
     "R/provider_br_helpers.R": {
-      "checksum": "36533d473317135a1d2c295272554f5f"
+      "checksum": "54d26fd605f67ba5000853f8da91cd01"
     },
     "R/provider_contract.R": {
-      "checksum": "4360aa24f857bf96064a1edf9e5e0b27"
+      "checksum": "333c6cba53fbdc755bc6dee21ae2b7e7"
     },
     "R/provider_faunabr.R": {
-      "checksum": "e654eefa511df4f40b2eda15d8fbc0d1"
+      "checksum": "8c4baa29826df1b9cee02bc81459fe12"
     },
     "R/provider_florabr.R": {
-      "checksum": "7058672ad4cd3ebbcbe34bf7394b92e8"
+      "checksum": "1b6aa558c4b08b741d28aa6e38839e85"
     },
     "R/provider_gbif.R": {
-      "checksum": "b7e5394c634f68575b249ff972a65811"
+      "checksum": "7ed54406237b30144204c1642c06c624"
     },
     "R/provider_registry.R": {
       "checksum": "0bd3216ff8221ada400dfc61a60da569"
     },
     "R/provider_template.R": {
-      "checksum": "cc7bdc86cc1e674992b4669b6efc4d3f"
+      "checksum": "84cffe84d85a64c13669c09e64db36f9"
     },
     "R/run_app.R": {
       "checksum": "2da6a3c17786903d5d9c51de1249767b"
     },
     "R/utils_cascade.R": {
-      "checksum": "5701c5b0bd45dd2339df4e481a3b5e6b"
+      "checksum": "cf5eeb7b251b0dc4dc673228d1f21f5a"
     },
     "R/utils_common.R": {
       "checksum": "64a04981deb29e05c0c8ccc2d75f665a"
     },
     "R/utils_dwc.R": {
-      "checksum": "4eaca1f226cb811f4ccf3045be380bf3"
+      "checksum": "c4f159c534aca39f006726a362fcc751"
     },
     "R/utils_export.R": {
       "checksum": "05c713b0e3e6d34e23a8a616e4ab28fa"
     },
     "R/utils_gbif_occ.R": {
-      "checksum": "7acbaec701641ac5f37528db4468e43e"
+      "checksum": "d7cc3c3fd96746aced9b485310782147"
     },
     "R/utils_geo_areas.R": {
       "checksum": "068baff8ac2ad7fe63d2a4418f9f5450"
     },
     "R/utils_geo_verify.R": {
-      "checksum": "e8caed5bb0cd914c9b9488e4eb56777f"
+      "checksum": "b9831c34108a1a78d00f10d81999398e"
     },
     "R/utils_geo.R": {
-      "checksum": "b530a45e8a0c157d7f661d0cfb964864"
+      "checksum": "91bf0f664b3e6dbefc9c09b8e2c21833"
     },
     "R/utils_invasive.R": {
-      "checksum": "216f8da06c894710c585b04b5fd9bea9"
+      "checksum": "be3f80a69426dab7c063439b067f455a"
     },
     "R/utils_io.R": {
-      "checksum": "1f82e8d134ae27175330eb439495f6cf"
+      "checksum": "5b4842e9c74b8483fb273ae4a48fcc9d"
     },
     "R/utils_results_ui.R": {
-      "checksum": "0977af71e1e1e338004ac21fb03491c7"
+      "checksum": "6c0c0192a261a80e9e8a2bc5456e7738"
     },
     "R/utils_threat_status.R": {
-      "checksum": "04f3a207cbfa67fa764387c8bba94c78"
+      "checksum": "c0c6c2d0d5c86fdeff29303642e1854d"
     },
     "R/utils_upload.R": {
-      "checksum": "6636fbe74ec357317b9da1b967df7ef1"
+      "checksum": "cd8dc48f01c6073bb946c833aa0e4f70"
     },
     "R/utils_version.R": {
       "checksum": "c34a1c25d10e3873a974c2b2ccf5a5e3"
