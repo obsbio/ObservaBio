@@ -19,24 +19,46 @@
 #' Guess the field delimiter of a delimited-text file from its lines
 #'
 #' Picks, among tab/;/,/|, the one with the highest median count per line. Comma
-#' loses to semicolon on PT-BR exports (where "," is the decimal mark), and
-#' commas inside quoted fields only over-count, which is harmless downstream.
+#' loses to semicolon on PT-BR exports (where "," is the decimal mark).
+#'
+#' Two rules keep a valid file from a wrong guess (audit A13):
+#'
+#' - The count ignores text in double quotes. A note such as "a,b,c" is one
+#'   cell, and its commas are not separators.
+#' - A delimiter that gives a header cell `scientificName` wins over one that
+#'   does not. For a `.tsv` file, tab wins when it gives that header.
 #'
 #' @param lines Character vector of file lines (BOM already stripped).
+#' @param ext File extension, lower case ("csv", "tsv", "txt").
+#' @param key Header cell that marks the correct split.
 #' @return A single-character delimiter string.
 #' @noRd
-sniff_delimiter <- function(lines) {
+sniff_delimiter <- function(lines, ext = "", key = .ObservaBio_name_key()) {
     lines <- lines[nzchar(trimws(lines))]
     if (length(lines) == 0L) {
         return(",")
     }
     probe <- utils::head(lines, 20L)
+    # Remove the quoted text over the joined lines, so a quoted cell with a
+    # line break also goes.
+    bare <- strsplit(gsub("\"[^\"]*\"", "", paste(probe, collapse = "\n")), "\n",
+                     fixed = TRUE)[[1L]]
     delims <- c("\t", ";", ",", "|")
     score <- vapply(delims, function(d) {
-        stats::median(vapply(probe, .count_delim, integer(1), delim = d))
+        stats::median(.count_delim(bare, d))
     }, numeric(1))
-    if (all(score == 0)) {
-        return(",")
+    has_key <- vapply(delims, function(d) {
+        cells <- unlist(strsplit(probe, d, fixed = TRUE), use.names = FALSE)
+        any(gsub('^"|"$', "", trimws(cells)) == key)
+    }, logical(1))
+    if (identical(ext, "tsv") && has_key[["\t"]]) {
+        return("\t")
+    }
+    if (any(has_key)) {
+        score[!has_key] <- -1
+    }
+    if (all(score <= 0)) {
+        return(if (any(has_key)) delims[has_key][[1L]] else ",")
     }
     delims[[which.max(score)]]
 }
@@ -45,6 +67,7 @@ sniff_delimiter <- function(lines) {
 #' @noRd
 read_text_grid <- function(path) {
     lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
+    ext <- tolower(tools::file_ext(path))
     if (length(lines) > 0L) {
         lines[[1]] <- sub("^\uFEFF", "", lines[[1]])  # strip a UTF-8 BOM
     }
@@ -52,7 +75,7 @@ read_text_grid <- function(path) {
     if (length(lines) == 0L || !any(nzchar(trimws(lines)))) {
         stop("O arquivo está vazio.")
     }
-    delim <- sniff_delimiter(lines)
+    delim <- sniff_delimiter(lines, ext = ext)
     # Fix the column count from the widest line so preamble rows with fewer
     # fields do not confuse read.table's auto-detection (over-count from quoted
     # delimiters is harmless — extra blank columns are dropped below).
@@ -139,6 +162,19 @@ read_ObservaBio_table <- function(path, key = .ObservaBio_name_key()) {
     pt_row <- if (hdr > 1L) as.character(unlist(grid[hdr - 1L, ], use.names = FALSE)) else NULL
     # Keep only named columns; align pt labels to the same columns.
     keep <- !is.na(header) & nzchar(header)
+    # Two columns with one name lose one of them in the output, because the
+    # model selects columns by name (audit A14). The user must choose.
+    dup <- unique(header[keep][duplicated(header[keep])])
+    if (length(dup) > 0L) {
+        where <- vapply(dup, function(d) {
+            sprintf("%s (colunas %s)", d, paste(which(keep & header == d), collapse = ", "))
+        }, character(1))
+        stop(sprintf(
+            paste0("A planilha tem colunas com o mesmo nome: %s. ",
+                   "Renomeie ou remova as colunas repetidas e envie de novo."),
+            paste(where, collapse = "; ")
+        ))
+    }
     header <- header[keep]
     if (!is.null(pt_row)) pt_row <- pt_row[keep]
 
