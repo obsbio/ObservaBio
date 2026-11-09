@@ -3471,10 +3471,10 @@
       "checksum": "c93536947de52a93d7641279c340a0bc"
     },
     "inst/extdata/faunabr_observabio.meta.json": {
-      "checksum": "3c40d29adf4c467118297c7502328ae0"
+      "checksum": "b0ebd0441f06c46cf6fe8936870cb04c"
     },
     "inst/extdata/faunabr_observabio.rds": {
-      "checksum": "ec251a4b8f88d46a62224d8366add4ad"
+      "checksum": "e9c127c700f7a1cfd57be667af7df415"
     },
     "inst/extdata/florabr_observabio.meta.json": {
       "checksum": "829314efa7d25e6dac0f7d954a906dbc"
