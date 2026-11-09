@@ -107,6 +107,89 @@ format_mma_status_label <- function(x) {
     unname(labels[code])
 }
 
+#' The federal portaria that a `statusSource` value is, as "number/year"
+#'
+#' The value must be one reference and nothing more: "Portaria 148/2022",
+#' "Portaria MMA nº 148, de 7 de junho de 2022", "Portaria GM/MMA 1.783/2026".
+#' A value with an other body ("Portaria SEMA 148/2022"), a second source or
+#' free text gives NA. Such a value can be a state list, and only the user
+#' knows if it is current.
+#'
+#' @param source Character vector of `statusSource` values.
+#' @return Character vector, same length as `source`, NA where the value is
+#'   not one plain federal reference.
+#' @noRd
+dwc_mma_reference <- function(source) {
+    src <- gsub("(\\d)\\.(\\d)", "\\1\\2", as.character(source))
+    key <- normalize_for_matching(src)
+    pattern <- paste0(
+        "^portaria(?: do)?(?: gm)?(?: mma)?(?: no?)? ([0-9]+)",
+        "(?: de [0-9]{1,2} de [a-z]+)?(?: de)? ([0-9]{4})$"
+    )
+    hit <- !is.na(key) & grepl(pattern, key, perl = TRUE)
+    out <- rep(NA_character_, length(src))
+    out[hit] <- sub(pattern, "\\1/\\2", key[hit], perl = TRUE)
+    out
+}
+
+#' Is a `statusSource` value an MMA list that the embedded base replaced?
+#'
+#' Only a value that is one plain federal reference to a replaced portaria
+#' ([mma_replaced_sources()]) counts. The word "portaria" alone does not
+#' prove that a list is revoked, or that the list is from the MMA. Other
+#' values (a state list, an IUCN note, a mixed source) belong to the user,
+#' and they stay (ADR-029).
+#'
+#' @param source Character vector of `statusSource` values.
+#' @param replaced_sources "number/year" of the replaced portarias.
+#' @return Logical vector, same length as `source`.
+#' @noRd
+dwc_stale_mma_source <- function(source, replaced_sources) {
+    ref <- dwc_mma_reference(source)
+    !is.na(ref) & ref %in% gsub(".", "", replaced_sources, fixed = TRUE)
+}
+
+#' Write the current MMA answer onto output rows
+#'
+#' The MMA check is offline and costs nothing, so every row gets the current
+#' answer, also a row that arrives already validated (audit A02):
+#'
+#' - A listed species gets the current label and source.
+#' - An unlisted species loses a status whose source is a replaced list.
+#' - Any other input value stays (ADR-029).
+#'
+#' Only the `status`/`statusSource` columns of the input model change.
+#'
+#' @param records Output records.
+#' @param rows Row indices that the answer applies to.
+#' @param category,source MMA category code and source, one per row of `rows`
+#'   (NA where the species is not listed).
+#' @param replaced_sources Portarias that the embedded base replaced.
+#' @return `records`.
+#' @noRd
+dwc_apply_mma_status <- function(records, rows, category, source, replaced_sources) {
+    has_status <- "status" %in% names(records)
+    has_source <- "statusSource" %in% names(records)
+    if (length(rows) == 0L || !(has_status || has_source)) {
+        return(records)
+    }
+    label <- format_mma_status_label(category)
+    listed <- !is.na(label)
+    if (has_status) {
+        records$status[rows[listed]] <- label[listed]
+    }
+    if (has_source) {
+        records$statusSource[rows[listed]] <- as.character(source)[listed]
+        stale <- rows[!listed][dwc_stale_mma_source(records$statusSource[rows[!listed]],
+                                                    replaced_sources)]
+        records$statusSource[stale] <- NA_character_
+        if (has_status) {
+            records$status[stale] <- NA_character_
+        }
+    }
+    records
+}
+
 #' Rows already carrying taxonomy, preserved as-is (script 260626 logic)
 #'
 #' A record counts as already validated when `taxonID` or `kingdom` is filled.
@@ -169,6 +252,12 @@ dwc_unvalidated_names <- function(records, name_col = "scientificName") {
 #' @param record_areas Optional study area per record ([assign_record_areas()]),
 #'   `nrow(records)` long. Switches the `distribution_flags` join to the
 #'   per-(species, area) key; records with no area keep an empty flag.
+#' @param mma_status Optional data frame `statusMMA`/`statusSourceMMA`, one row
+#'   per record ([mma_status_for_names()] on the record names). It gives the MMA
+#'   answer to the rows that the cascade does not fill. `NULL` leaves those
+#'   rows as they are.
+#' @param mma_replaced Portarias that the embedded MMA base replaced
+#'   ([mma_replaced_sources()]), to find a status from a replaced list.
 #' @return Data frame of records with taxonomy filled, in `model_cols` order.
 #' @noRd
 build_dwc_output <- function(records, cascade, model_cols = names(records),
@@ -176,7 +265,9 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
                              add_distribution_flag = TRUE,
                              distribution_flags = NULL,
                              invasive_sources = NULL,
-                             record_areas = NULL) {
+                             record_areas = NULL,
+                             mma_status = NULL,
+                             mma_replaced = character(0)) {
     if (!is.data.frame(records)) {
         stop("build_dwc_output(): records must be a data frame.")
     }
@@ -198,6 +289,7 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
 
     has_cascade <- !is.null(cascade) && is.data.frame(cascade) &&
         nrow(cascade) > 0L && "query_name" %in% names(cascade)
+    fill_rows <- integer(0)
     if (has_cascade && length(keys) > 0L) {
         idx <- match(keys, as.character(cascade$query_name))
         fill_rows <- which(!prefilled & !is.na(idx))
@@ -229,19 +321,38 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
             # cascade and the model actually has the target column (do not invent
             # status columns that the uploaded model does not carry).
             status_map <- dwc_status_columns()
-            for (model_col in names(status_map)) {
+            if ("statusMMA" %in% names(cascade)) {
+                records <- dwc_apply_mma_status(
+                    records, fill_rows,
+                    category = as.character(cascade$statusMMA[idx[fill_rows]]),
+                    source = as.character(cascade$statusSourceMMA[idx[fill_rows]]),
+                    replaced_sources = mma_replaced
+                )
+            }
+            for (model_col in c("statusIUCN", "criteria")) {
                 src <- status_map[[model_col]]
                 if (!src %in% names(cascade) || !model_col %in% names(records)) {
                     next
                 }
                 vals <- as.character(cascade[[src]][idx[fill_rows]])
-                if (identical(model_col, "status")) {
-                    vals <- format_mma_status_label(vals)
-                }
                 records[[model_col]][fill_rows] <-
                     fill_blank_values(vals, records[[model_col]][fill_rows])
             }
         }
+    }
+
+    # The rows that the cascade did not fill (already validated, or not
+    # resolved) get the MMA answer for the name that they carry. The IUCN
+    # columns of these rows stay as they are, because each IUCN check is a
+    # network call.
+    if (is.data.frame(mma_status) && nrow(mma_status) == n && n > 0L) {
+        rest <- setdiff(seq_len(n), fill_rows)
+        records <- dwc_apply_mma_status(
+            records, rest,
+            category = as.character(mma_status$statusMMA[rest]),
+            source = as.character(mma_status$statusSourceMMA[rest]),
+            replaced_sources = mma_replaced
+        )
     }
 
     # A flag from the input file belongs to another run, another area or another

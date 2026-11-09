@@ -141,6 +141,11 @@ normalize_provider_result <- function(df, provider) {
 #'   `run_cascade()` skip a higher-priority base's expensive fuzzy pass for a name
 #'   a lower-priority base already carries. `NULL` (the default) simply opts the
 #'   base out — it is then queried with everything, exactly as before.
+#' @param accepted_name Optional function `(names)` returning a data frame
+#'   `query_name`/`acceptedName` (one row per unique input name, `NA` when the
+#'   name is not a known synonym). The MMA check uses it to find a synonym under
+#'   its accepted name ([mma_status_for_names()]). `NULL` when the base has no
+#'   synonym data.
 #' @return An object of class "ObservaBio_provider".
 #' @noRd
 new_provider <- function(id, label, type, priority, query,
@@ -148,7 +153,8 @@ new_provider <- function(id, label, type, priority, query,
                          load = function() invisible(NULL),
                          version = function() NA_character_,
                          distribution = NULL,
-                         exact_match = NULL) {
+                         exact_match = NULL,
+                         accepted_name = NULL) {
     if (!is.function(query)) {
         stop("new_provider(): 'query' must be a function.")
     }
@@ -162,7 +168,8 @@ new_provider <- function(id, label, type, priority, query,
         load = load,
         version = version,
         distribution = distribution,
-        exact_match = exact_match
+        exact_match = exact_match,
+        accepted_name = accepted_name
     )
     class(provider) <- "ObservaBio_provider"
     provider

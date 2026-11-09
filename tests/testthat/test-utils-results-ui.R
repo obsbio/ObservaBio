@@ -201,3 +201,32 @@ test_that("results_filter_options on an empty view offers nothing", {
                  c(areas = 0L, flags = 0L, kingdoms = 0L, conservation = 0L,
                    match_types = 0L))
 })
+
+# ---- Audit 2026-11-08: A11 -------------------------------------------------
+
+test_that("the threat filter and its count use MMA or IUCN (A11)", {
+    dwc <- data.frame(
+        scientificName = c("Mma only", "Iucn only", "Both", "None"),
+        kingdom = "Plantae",
+        status = c("(VU) Vulneravel", NA, "(EN) Em Perigo", NA),
+        statusIUCN = c(NA, "CR", "EN", "LC"),
+        stringsAsFactors = FALSE
+    )
+    view <- build_results_view(dwc, NULL, NULL)
+    expect_equal(view$statusIUCN, c(NA, "CR", "EN", "LC"))
+    hit <- filter_results_view(view, conservation = "ameacada")
+    expect_equal(hit$scientificName, c("Mma only", "Iucn only", "Both"))
+    opts <- results_filter_options(view)
+    expect_equal(opts$conservation$options$count[[1]], 3L)
+})
+
+test_that("build_results_view takes the IUCN category from the cascade (A11)", {
+    dwc <- data.frame(scientificName = "Aus bus", kingdom = "Plantae",
+                      stringsAsFactors = FALSE)
+    cascade <- data.frame(query_name = normalize_scientific_name("Aus bus"),
+                          provider = "florabr", validation_status = "accepted",
+                          iucnCategory = "EN", stringsAsFactors = FALSE)
+    view <- build_results_view(dwc, cascade, NULL)
+    expect_equal(view$statusIUCN, "EN")
+    expect_true(view_threatened(view))
+})

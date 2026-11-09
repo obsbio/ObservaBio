@@ -311,3 +311,29 @@ test_that("an unresolved name carries no taxonomic status", {
     expect_equal(res$validation_status, "not_found")
     expect_true(is.na(res$taxonomicStatus))
 })
+
+# ---- br_accepted_name (audit A10) ------------------------------------------
+
+test_that("br_accepted_name maps a synonym and refuses homonyms and splits", {
+    data <- data.frame(
+        species = c("Aus bus", "Cus dus", "Cus dus", "Eus fus", "Eus fus",
+                    "Gus hus", "Gus hus"),
+        taxonomicStatus = c("Synonym", "Accepted", "Synonym", "Synonym", "Synonym",
+                            "Synonym", "Synonym"),
+        acceptedName = c("Aus cus", NA, "Cus xus", "Eus one", "Eus two",
+                         "Gus ius", "Gus ius"),
+        stringsAsFactors = FALSE
+    )
+    out <- br_accepted_name("test_accepted", c("Aus bus", "Cus dus", "Eus fus",
+                                               "Gus hus", "Zus zus", NA),
+                            data = data, accepted_col = "acceptedName")
+    expect_equal(out$query_name, c("Aus bus", "Cus dus", "Eus fus", "Gus hus", "Zus zus"))
+    expect_equal(out$acceptedName, c("Aus cus", NA, NA, "Gus ius", NA))
+})
+
+test_that("the BR providers expose accepted_name", {
+    expect_true(is.function(florabr_provider()$accepted_name))
+    expect_true(is.function(faunabr_provider()$accepted_name))
+    expect_equal(florabr_provider()$accepted_name("Almeidea coerulea")$acceptedName,
+                 "Conchocarpus coeruleus")
+})

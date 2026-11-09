@@ -85,6 +85,19 @@ is_threatened_status <- function(status) {
         c("threat--vu", "threat--en", "threat--cr", "threat--ex")
 }
 
+#' TRUE where a results-view row is threatened on the MMA or the IUCN list
+#'
+#' The filter says "MMA/IUCN", so a species on the IUCN list only must match it
+#' too (audit A11). The detail panel shows which list gives the threat.
+#'
+#' @param view A [build_results_view()] frame.
+#' @return Logical vector, one per row.
+#' @noRd
+view_threatened <- function(view) {
+    iucn <- if ("statusIUCN" %in% names(view)) view$statusIUCN else rep(NA_character_, nrow(view))
+    is_threatened_status(view$status) | is_threatened_status(iucn)
+}
+
 #' Filter the Step-3 results view (pure)
 #'
 #' Four independent dimensions over [build_results_view()]. Values *within* a
@@ -125,7 +138,7 @@ filter_results_view <- function(view, flags = NULL, kingdoms = NULL,
     if (length(conservation) > 0L) {
         hit <- rep(FALSE, nrow(view))
         if ("ameacada" %in% conservation) {
-            hit <- hit | is_threatened_status(view$status)
+            hit <- hit | view_threatened(view)
         }
         if ("invasora" %in% conservation) {
             hit <- hit | (!is.na(view$invasive) & as.logical(view$invasive))
@@ -265,7 +278,7 @@ results_filter_options <- function(view) {
         kingdoms = tally(if (n > 0L) kingdom_key(view$kingdom) else character(0),
                          dims$kingdoms$options$key),
         conservation = c(
-            if (n > 0L) sum(is_threatened_status(view$status)) else 0L,
+            if (n > 0L) sum(view_threatened(view)) else 0L,
             if (n > 0L) sum(!is.na(view$invasive) & as.logical(view$invasive)) else 0L
         ),
         match_types = tally(match_type, dims$match_types$options$key)

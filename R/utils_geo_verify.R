@@ -446,6 +446,7 @@ build_results_view <- function(dwc, cascade, geo = NULL,
         return(data.frame(
             scientificName = character(0), family = character(0), genus = character(0),
             kingdom = character(0), taxonID = character(0), status = character(0),
+            statusSource = character(0), statusIUCN = character(0),
             validator = character(0), matchType = character(0),
             distributionFlag = character(0), gbif_count = integer(0),
             gbif_failed = logical(0),
@@ -459,10 +460,18 @@ build_results_view <- function(dwc, cascade, geo = NULL,
 
     validator <- rep(NA_character_, n)
     match_type <- rep(NA_character_, n)
+    # The model can lack a statusIUCN column. The view still shows the IUCN
+    # category from the cascade, because the threat filter uses MMA or IUCN
+    # (audit A11).
+    status_iucn <- col(dwc, "statusIUCN")
     if (is.data.frame(cascade) && nrow(cascade) > 0L && "query_name" %in% names(cascade)) {
         ci <- match(keys, as.character(cascade$query_name))
         validator <- as.character(cascade$provider)[ci]
         match_type <- validation_status_label(as.character(cascade$validation_status)[ci])
+        if ("iucnCategory" %in% names(cascade)) {
+            status_iucn <- fill_blank_values(status_iucn,
+                                             as.character(cascade$iucnCategory)[ci])
+        }
     }
 
     # The record's study area: the count (like the flag) is per (species, area).
@@ -491,7 +500,8 @@ build_results_view <- function(dwc, cascade, geo = NULL,
         scientificName = col(dwc, name_col),
         family = col(dwc, "family"), genus = col(dwc, "genus"),
         kingdom = col(dwc, "kingdom"), taxonID = col(dwc, "taxonID"),
-        status = col(dwc, "status"),
+        status = col(dwc, "status"), statusSource = col(dwc, "statusSource"),
+        statusIUCN = status_iucn,
         validator = validator, matchType = match_type,
         distributionFlag = col(dwc, "distributionFlag"),
         gbif_count = gbif_count, gbif_failed = gbif_failed,
