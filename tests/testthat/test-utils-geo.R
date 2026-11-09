@@ -290,12 +290,15 @@ test_that("classify_distribution_flag returns the four verbatim categories", {
     )))
 })
 
-test_that("classify_distribution_flag treats NA GBIF as no confirmation", {
-    # A species with no georeferenced GBIF occurrence is judged by the
-    # cross-check alone (SPEC §8 step 6).
-    expect_equal(classify_distribution_flag(NA, TRUE),
-                 "sem registro próximo, presente no estado/bioma")
+test_that("classify_distribution_flag treats NA GBIF as no complete answer", {
+    # NA is a failed or partial GBIF search. The two "sem registro" levels say
+    # that GBIF has no record near the area, so they need a complete search
+    # (audit A08, A09). A complete search with no point is FALSE.
+    expect_equal(classify_distribution_flag(NA, TRUE), "sem dados disponíveis")
+    expect_equal(classify_distribution_flag(NA, FALSE), "sem dados disponíveis")
     expect_equal(classify_distribution_flag(NA, NA), "sem dados disponíveis")
+    expect_equal(classify_distribution_flag(FALSE, TRUE),
+                 "sem registro próximo, presente no estado/bioma")
 })
 
 test_that("classify_distribution_flag is vectorized and name-preserving", {

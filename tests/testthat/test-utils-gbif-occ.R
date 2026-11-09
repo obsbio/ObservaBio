@@ -592,3 +592,37 @@ test_that(".geo_force_ccw fixes the holes of every part of a MULTIPOLYGON", {
         expect_lt(signed2(p[[2L]]), 0)
     }
 })
+
+# ---- Audit 2026-11-08: A09 -------------------------------------------------
+
+test_that("gbif_occ_fetch_grouped marks the first page of a big taxon as truncated", {
+    reset_occ_cache()
+    pool <- lapply(seq_len(301L), function(k) occ_record(k, "1", lon = -40))
+    fake_gbif(taxa = list("Aus bus" = exact(1L), "Cus dus" = exact(2L)),
+              pool = c(pool, list(occ_record(9001, "2"))))
+    out <- gbif_occ_fetch_grouped(c("Aus bus", "Cus dus"), rep(square_wkt, 2L))
+    expect_equal(nrow(out[[1L]]), 300L)
+    expect_false(isTRUE(attr(out[[1L]], "gbif_error")))
+    expect_true(isTRUE(attr(out[[1L]], "gbif_truncated")))
+    expect_false(isTRUE(attr(out[[2L]], "gbif_truncated")))
+})
+
+test_that("gbif_occ_in_buffer reports a truncated species, also from the cache", {
+    reset_occ_cache()
+    buf <- sample_buffer()
+    calls <- 0L
+    far_page <- function(name, wkt, max_records, page_size) {
+        calls <<- calls + 1L
+        out <- data.frame(species = name, decimalLongitude = -46.5,
+                          decimalLatitude = -15.8, datasetKey = "ds-far",
+                          stringsAsFactors = FALSE)
+        attr(out, "gbif_truncated") <- TRUE
+        out
+    }
+    out <- gbif_occ_in_buffer("Aus bus", buf, fetch = far_page, sleep = no_sleep)
+    expect_equal(nrow(out), 0L)
+    expect_equal(attr(out, "truncated"), "Aus bus")
+    again <- gbif_occ_in_buffer("Aus bus", buf, fetch = far_page, sleep = no_sleep)
+    expect_equal(attr(again, "truncated"), "Aus bus")
+    expect_equal(calls, 1L)
+})

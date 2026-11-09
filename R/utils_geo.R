@@ -359,12 +359,17 @@ distribution_flag_levels <- function() {
 #' Edge cases (SPEC §8 step 6): a species with no georeferenced GBIF occurrence
 #' has `has_gbif = FALSE` and is judged by the cross-check alone; a species with
 #' no distribution data anywhere has `present = NA` -> "sem dados disponíveis".
+#' A GBIF search that failed or gave only part of the records has
+#' `has_gbif = NA`. Without a point, the flag is then "sem dados disponíveis",
+#' because the other two levels say that GBIF has no record near the area
+#' (audit A08, A09).
 #'
 #' Pure and deterministic: vectorized and name-preserving, so a whole upload's
 #' per-species flags come from one call. `has_gbif`/`present` are recycled from
 #' length 1.
 #'
-#' @param has_gbif Logical (TRUE/FALSE/NA): a GBIF point inside the buffer.
+#' @param has_gbif Logical: a GBIF point inside the buffer (TRUE), a complete
+#'   search with no point (FALSE), or no complete answer (NA).
 #' @param present Logical (TRUE/FALSE/NA): the cross-check `present` field.
 #' @return Character vector of flags, names carried from the inputs.
 #' @noRd
@@ -394,6 +399,7 @@ classify_distribution_flag <- function(has_gbif, present) {
     out[rest & !is.na(present) & present]  <- lv[["near_absent"]]
     out[rest & !is.na(present) & !present] <- lv[["outside"]]
     out[rest & is.na(present)]             <- lv[["no_data"]]
+    out[rest & is.na(has_gbif)]            <- lv[["no_data"]]
 
     names(out) <- nm
     out

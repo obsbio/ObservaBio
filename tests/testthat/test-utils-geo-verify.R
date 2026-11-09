@@ -259,9 +259,12 @@ test_that("a rate-limited species is marked failed, not counted as zero", {
 
     expect_type(v$gbif_failed, "logical")
     expect_equal(v$gbif_failed, c(FALSE, TRUE, FALSE))
-    # The genuinely absent species and the unchecked one both count 0, so the
-    # count alone cannot tell them apart. The flag is what does.
-    expect_equal(v$gbif_count[2], v$gbif_count[3])
+    # The unchecked species has no count (NA), and the absent one has 0. The
+    # export must tell them apart without the app (audit A08).
+    expect_true(is.na(v$gbif_count[2]))
+    expect_equal(v$gbif_count[3], 0L)
+    expect_equal(ps$gbif_status, c("complete", "failed", "complete"))
+    expect_equal(ps$distributionFlag[2], "sem dados disponíveis")
 })
 
 test_that("build_results_view reports gbif_failed as FALSE when there is no geo", {
@@ -500,4 +503,45 @@ test_that("geo_resolve_areas resolves a shapefile area and a KML area together",
     expect_equal(vapply(resolved, function(a) a$name, character(1)),
                  c("Fazenda", "Reserva"))
     expect_true(all(vapply(resolved, function(a) inherits(a$geom, "sf"), logical(1))))
+})
+
+# ---- Audit 2026-11-08: A08, A09 --------------------------------------------
+
+test_that("a truncated search with no point is not an absence (A09)", {
+    reset_occ_cache()
+    accepted <- c("Aaa bbb", "Ccc ddd")
+    qn <- vapply(accepted, normalize_scientific_name, character(1), USE.NAMES = FALSE)
+    cascade <- data.frame(query_name = qn, scientificName = accepted,
+                          validation_status = "accepted", provider = "florabr",
+                          stringsAsFactors = FALSE)
+    fetch_cut <- function(nm, wkt, max_records, page_size) {
+        out <- if (identical(nm, "Aaa bbb")) {
+            data.frame(species = nm, decimalLongitude = -47, decimalLatitude = -22,
+                       datasetKey = "ds-1", stringsAsFactors = FALSE)
+        } else {
+            gbif_occ_parse(NULL)
+        }
+        attr(out, "gbif_truncated") <- TRUE
+        out
+    }
+    geo <- run_geo_verification(sample_area(), cascade,
+                                providers = list(fake_dist_provider()),
+                                uf_biomes = sample_uf_biomes(), fetch = fetch_cut)
+    ps <- geo$per_species
+    expect_equal(ps$gbif_status, c("truncated", "truncated"))
+    # A point inside the buffer still confirms.
+    expect_equal(ps$distributionFlag[[1]], "confirmada")
+    expect_true(is.na(ps$has_gbif[[2]]))
+    expect_true(is.na(ps$gbif_count[[2]]))
+    expect_equal(ps$distributionFlag[[2]], "sem dados disponíveis")
+
+    audit <- build_audit_table(
+        data.frame(query_name = qn, scientificName = accepted,
+                   validation_status = "accepted", provider = "florabr",
+                   stringsAsFactors = FALSE),
+        geo = geo
+    )
+    expect_true("gbifStatus" %in% names(audit))
+    expect_equal(audit$gbifStatus, c("truncated", "truncated"))
+    expect_true(is.na(audit$gbifRecords[[2]]))
 })
