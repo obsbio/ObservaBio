@@ -32,7 +32,9 @@ geo_read_shapefile <- function(path, quiet = TRUE) {
         }
         shp <- shps[[1L]]
     }
-    area <- sf::st_read(shp, quiet = quiet)
+    # GDAL picks a driver by the file content. The fixed driver keeps a file
+    # with another format (e.g. a VRT that opens other sources) out (audit A04).
+    area <- sf::st_read(shp, quiet = quiet, drivers = "ESRI Shapefile")
     if (is.na(sf::st_crs(area))) {
         stop("Shapefile has no CRS (.prj missing or unreadable); cannot reproject for the 10 km buffer.")
     }
@@ -54,6 +56,9 @@ geo_read_shapefile <- function(path, quiet = TRUE) {
 #' file with no polygon at all keeps whatever it has — a 10 km buffer around a
 #' point is still a valid operation area.
 #'
+#' The content check of [geo_check_kml_content()] runs before GDAL opens the
+#' file, and the read accepts the KML drivers only.
+#'
 #' @param path Path to a `.kml` file.
 #' @param quiet Passed to `sf::st_read`.
 #' @return An `sf` object with a defined CRS.
@@ -62,6 +67,8 @@ geo_read_kml <- function(path, quiet = TRUE) {
     if (!file.exists(path)) {
         stop(sprintf("KML path not found: %s", path))
     }
+    geo_check_kml_content(path)
+    kml_drivers <- intersect(c("KML", "LIBKML"), sf::st_drivers("vector")$name)
     layers <- sf::st_layers(path)$name
     if (length(layers) == 0L) {
         stop(sprintf("KML has no readable layer: %s", path))
@@ -69,7 +76,8 @@ geo_read_kml <- function(path, quiet = TRUE) {
 
     parts <- lapply(layers, function(layer) {
         geom <- tryCatch(
-            sf::st_geometry(sf::st_read(path, layer = layer, quiet = quiet)),
+            sf::st_geometry(sf::st_read(path, layer = layer, quiet = quiet,
+                                        drivers = kml_drivers)),
             error = function(e) NULL
         )
         if (is.null(geom) || length(geom) == 0L) NULL else sf::st_zm(geom, drop = TRUE)
@@ -91,6 +99,51 @@ geo_read_kml <- function(path, quiet = TRUE) {
         sf::st_crs(geom) <- 4326
     }
     sf::st_sf(geometry = geom)
+}
+
+#' Reject a `.kml` that is not a plain KML document
+#'
+#' GDAL selects a driver by the file content, not by the extension. A VRT
+#' renamed to `.kml` opened a source outside the upload (audit A04). Also a
+#' KML can point to other data. `sf::st_layers()` has no driver argument, so
+#' this check must run before it opens the file:
+#'
+#' - The root element must be `kml`.
+#' - A DOCTYPE or ENTITY declaration (XML external entities) is refused.
+#' - A VRT marker or a KML `NetworkLink` (a remote document) is refused.
+#'
+#' @param path Path to the `.kml`.
+#' @param max_bytes Size limit of the file.
+#' @return `invisible(TRUE)`, or an error.
+#' @noRd
+geo_check_kml_content <- function(path, max_bytes = 200 * 1024^2) {
+    size <- file.size(path)
+    if (is.na(size) || size == 0) {
+        stop("KML file is empty.")
+    }
+    if (size > max_bytes) {
+        stop(sprintf("KML file is larger than %d MiB.", max_bytes %/% 1024^2))
+    }
+    bytes <- readBin(path, "raw", n = size)
+    # rawToChar() stops at a NUL byte. A UTF-16 file has NUL bytes, and KML
+    # is UTF-8, so such a file fails the root check below.
+    bytes <- bytes[bytes != as.raw(0L)]
+    txt <- rawToChar(bytes)
+    head <- rawToChar(bytes[seq_len(min(length(bytes), 65536L))])
+    head <- sub("^\xef\xbb\xbf", "", head, useBytes = TRUE)
+    # (?s) lets `.` match a line break. A comment or a processing instruction
+    # can have more than one line. Without (?s), a valid KML was refused.
+    head <- gsub("(?s)<\\?.*?\\?>", "", head, perl = TRUE, useBytes = TRUE)
+    head <- gsub("(?s)<!--.*?-->", "", head, perl = TRUE, useBytes = TRUE)
+    if (!grepl("^\\s*<([A-Za-z_][A-Za-z0-9_.-]*:)?kml[\\s>/]", head, perl = TRUE,
+               useBytes = TRUE)) {
+        stop("The .kml file is not a KML document (its root element is not <kml>).")
+    }
+    banned <- "<!DOCTYPE|<!ENTITY|OGRVRTDataSource|NetworkLink"
+    if (grepl(banned, txt, ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
+        stop("The .kml file has a DTD, an entity, a VRT or a NetworkLink. Send a KML with the area geometry only.")
+    }
+    invisible(TRUE)
 }
 
 #' Read the operation area from any accepted source

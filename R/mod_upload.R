@@ -174,6 +174,15 @@ mod_upload_server <- function(id) {
         # first one silently (merge_areas() holds what we have). A bad file is
         # reported by name and skipped, and the valid ones still go through.
         areas_rv <- shiny::reactiveVal(list())
+        # `incoming` holds the areas of this upload. Two of its files can have
+        # one slug ("Area.kmz", "area.kmz"), and merge_areas() then keeps only
+        # the last. The other extraction is in neither `old` nor `new`, so
+        # without `incoming` its directory stays on the server disk.
+        set_areas <- function(new, incoming = list()) {
+            old <- areas_rv()
+            areas_rv(new)
+            unlink(area_released_dirs(c(old, incoming), new), recursive = TRUE)
+        }
 
         shiny::observeEvent(input$shapefile, {
             files <- input$shapefile
@@ -189,12 +198,20 @@ mod_upload_server <- function(id) {
                     type = "error", duration = 8
                 )
             }
-            areas_rv(merge_areas(areas_rv(), parsed$areas))
+            set_areas(merge_areas(areas_rv(), parsed$areas), incoming = parsed$areas)
         })
 
         shiny::observeEvent(input$area_remove, {
-            areas_rv(drop_area(areas_rv(), input$area_remove))
+            set_areas(drop_area(areas_rv(), input$area_remove))
         }, ignoreInit = TRUE)
+
+        # Each archive area has its own extraction directory. Without this
+        # cleanup, each replaced or removed area and each session left its
+        # files on the server disk (audit A06).
+        session$onSessionEnded(function() {
+            unlink(area_released_dirs(shiny::isolate(areas_rv()), list()),
+                   recursive = TRUE)
+        })
 
         shapefiles_r <- shiny::reactive({
             areas <- areas_rv()
