@@ -1,11 +1,12 @@
 # Title: GBIF Occurrences Inside the Buffer (part 2 of the geo verification)
 # Pure helpers (no Shiny) for SPEC §8 step 3: for each species, ask GBIF for
 # georeferenced occurrences that fall inside the 10 km buffer built in
-# utils_geo.R. Requests are spaced (throttle) and transient rate-limit errors
-# (HTTP 429) are retried with exponential backoff, so a long species list does
-# not trip GBIF's "Too many requests" storm. A lookup that still fails is tagged
-# (gbif_error / the "failed" attribute) so callers can tell "could not check"
-# from "genuinely absent" instead of collapsing both to zero points. The final
+# utils_geo.R. GBIF limits the occurrence search more when its servers are
+# busy, so this step sends few searches (ADR-031). Per query polygon, one facet
+# search lists the taxa with records, and grouped searches then fetch the
+# points of those taxa only. A lookup that still fails is tagged (gbif_error /
+# the "failed" attribute) so callers can tell "could not check" from
+# "genuinely absent" instead of collapsing both to zero points. The final
 # distributionFlag classifier is classify_distribution_flag() in utils_geo.R.
 #
 # GBIF geometry limit: the WKT travels in the query string, and GBIF cuts the
@@ -19,10 +20,14 @@
 
 .gbif_occ_cache <- new.env(parent = emptyenv())
 
+# Areas whose occurrences stay cached at once (see gbif_occ_store()).
+.GBIF_OCC_CACHE_MAX_AREAS <- 10L
+
 # Character ceiling for the query polygon's WKT. GBIF cuts the request line at
 # 4 KB, and percent-encoding grows the WKT by about a third on the way into the
 # URL, so 4 KB of request line is roughly 2.7 KB of WKT. 2000 leaves room for
-# rgbif's other query parameters and for its own headers.
+# the other query parameters, and for the taxon keys of a grouped search
+# (.GBIF_URL_MAX_CHARS).
 #
 # Measure characters, not vertices: the two do not convert. The old 300-vertex
 # cap passed a 5224-character WKT (a 6864-character URL) straight into the 400.
@@ -200,75 +205,6 @@ gbif_occ_query_blocks <- function(buffer, max_overfetch = .GBIF_QUERY_MAX_OVERFE
     blocks
 }
 
-#' One live GBIF occurrence page (the only network line)
-#'
-#' Thin wrapper over `rgbif::occ_data`. Isolated so the pure layers above it are
-#' testable offline: `gbif_occ_fetch_species()` takes a `query =` seam that
-#' defaults to this and that tests replace with a stub.
-#'
-#' @param name Scientific name to filter on.
-#' @param wkt Query polygon (from `gbif_occ_wkt`).
-#' @param start Zero-based record offset (paging).
-#' @param limit Page size.
-#' @return The `rgbif::occ_data` result (a list with a `$data` slot).
-#' @noRd
-gbif_occ_query_page <- function(name, wkt, start, limit) {
-    rgbif::occ_data(
-        scientificName = name,
-        geometry = wkt,
-        country = "BR",
-        hasCoordinate = TRUE,
-        limit = limit,
-        start = start
-    )
-}
-
-#' TRUE when an error looks like a transient GBIF rate-limit / server issue
-#'
-#' HTTP 429 ("Too many requests"), throttling, and 5xx/timeouts are worth a
-#' retry; a bad request, a geometry error, or "offline" is not.
-#' @noRd
-.gbif_occ_is_transient <- function(e) {
-    msg <- tolower(conditionMessage(e))
-    grepl("too many requests|429|rate.?limit|throttl|timed? ?out|timeout|502|503|504|service unavailable",
-          msg)
-}
-
-#' Call a GBIF page function, retrying transient rate-limit errors with backoff
-#'
-#' rgbif already pauses on HTTP 429, but a long species list can still exhaust
-#' its retries and start failing. This adds a bounded exponential backoff on top
-#' and stays quiet (rgbif's rate-limit notices are messages/warnings we expect
-#' during a retry). Non-transient errors are re-raised so the caller degrades.
-#' The `sleep` seam lets tests drive the retry path without waiting.
-#'
-#' @param query Page function with the [gbif_occ_query_page()] signature.
-#' @param name,wkt,start,limit Passed through to `query`.
-#' @param sleep Sleep function (seconds); defaults to `Sys.sleep`.
-#' @param max_retries Maximum extra attempts after the first.
-#' @param backoff,backoff_cap Backoff base and per-wait ceiling, in seconds.
-#' @return The `query` result.
-#' @noRd
-.gbif_occ_query_retry <- function(query, name, wkt, start, limit,
-                                  sleep = Sys.sleep, max_retries = 4L,
-                                  backoff = 2, backoff_cap = 30) {
-    attempt <- 0L
-    repeat {
-        res <- tryCatch(
-            suppressWarnings(suppressMessages(query(name, wkt, start, limit))),
-            error = function(e) e
-        )
-        if (!inherits(res, "error")) {
-            return(res)
-        }
-        if (attempt >= max_retries || !.gbif_occ_is_transient(res)) {
-            stop(res)
-        }
-        sleep(min(backoff * (2^attempt), backoff_cap))
-        attempt <- attempt + 1L
-    }
-}
-
 #' Tag a point table with whether its GBIF lookup failed (vs. genuinely empty)
 #' @noRd
 .gbif_occ_flag_error <- function(points, failed) {
@@ -276,18 +212,18 @@ gbif_occ_query_page <- function(name, wkt, start, limit) {
     points
 }
 
-#' Parse a `rgbif::occ_data` result into a tidy point table
+#' Parse a GBIF occurrence result into a tidy point table
 #'
-#' Keeps only rows carrying both coordinates, plus the dataset source. Robust to
-#' the several shapes `occ_data` returns: the `$data` tibble, a bare data frame,
-#' or the "no data" sentinel.
+#' Keeps only rows carrying both coordinates, plus the dataset source. Takes the
+#' table from [gbif_occ_results()], a bare data frame from a test seam, or a
+#' list with a `$data` slot (the old `rgbif::occ_data` shape).
 #'
 #' `key` is GBIF's own occurrence identifier. It is carried so overlapping query
 #' polygons can be deduplicated by record identity: two distinct observations
 #' often share a rounded coordinate and a dataset, so coordinates cannot tell a
 #' repeat apart from a neighbour (LESSONS L-024).
 #'
-#' @param res An `rgbif::occ_data` result (or its `$data`).
+#' @param res A data frame of occurrence records, a list with `$data`, or NULL.
 #' @return Data frame `species`/`decimalLongitude`/`decimalLatitude`/
 #'   `datasetKey`/`key` (zero rows when nothing usable is present).
 #' @noRd
@@ -325,58 +261,216 @@ gbif_occ_parse <- function(res) {
     )
 }
 
-#' Fetch GBIF occurrences for one species, paginated and capped
+# The taxon keys of an occurrence record. A search on a taxon key also finds
+# the records of the children of that taxon, so one of these fields holds the key.
+.GBIF_OCC_TAXON_FIELDS <- c("taxonKey", "acceptedTaxonKey", "kingdomKey", "phylumKey",
+                            "classKey", "orderKey", "familyKey", "genusKey", "speciesKey")
+
+# Character ceiling for a whole search URL, because GBIF cuts the request line
+# at 4 KB (LESSONS L-022). It sets how many taxon keys one grouped search holds.
+.GBIF_URL_MAX_CHARS <- 3800L
+
+# Taxa per page of the facet search.
+.GBIF_FACET_PAGE <- 10000L
+
+#' The occurrence records of one GBIF search answer, as a data frame
 #'
-#' Degrades gracefully: any network error (offline, timeout, rate limit) or a
-#' missing `rgbif` yields an empty table plus a warning — never an abort, so one
-#' bad species cannot sink the geo step (mirrors the cascade's per-provider
-#' resilience, LESSONS L-003).
+#' Reads only the fields that [gbif_occ_parse()] and the split by taxon use.
 #'
-#' @param name Scientific name.
-#' @param wkt Query polygon (from `gbif_occ_wkt`).
-#' @param max_records Hard cap on rows returned for this species.
-#' @param page_size Records per request.
-#' @param query Network seam; defaults to [gbif_occ_query_page()].
-#' @param sleep Sleep seam for the retry backoff; defaults to `Sys.sleep`.
-#' @return Data frame in the [gbif_occ_parse()] schema, tagged with a
-#'   `"gbif_error"` attribute: `TRUE` when the lookup failed (rate-limited,
-#'   offline, missing rgbif), `FALSE` when it succeeded (possibly with 0 rows).
-#'   This lets callers tell "we could not check" from "genuinely absent".
+#' @param body The parsed JSON body of an occurrence search.
+#' @return Data frame, or NULL when the answer has no records.
 #' @noRd
-gbif_occ_fetch_species <- function(name, wkt, max_records = 300L,
-                                   page_size = 300L,
-                                   query = gbif_occ_query_page,
-                                   sleep = Sys.sleep) {
-    empty <- gbif_occ_parse(NULL)
-    if (is.na(wkt) || !nzchar(wkt)) {
-        return(.gbif_occ_flag_error(empty, FALSE))
+gbif_occ_results <- function(body) {
+    recs <- body$results
+    if (length(recs) == 0L) {
+        return(NULL)
     }
-    if (identical(query, gbif_occ_query_page) &&
-        !requireNamespace("rgbif", quietly = TRUE)) {
-        warning("Package 'rgbif' is not installed; skipping GBIF occurrences.")
-        return(.gbif_occ_flag_error(empty, TRUE))
-    }
-    tryCatch({
-        pages <- list()
-        got <- 0L
-        start <- 0L
-        repeat {
-            want <- min(page_size, max_records - got)
-            if (want <= 0L) break
-            parsed <- gbif_occ_parse(
-                .gbif_occ_query_retry(query, name, wkt, start, want, sleep = sleep)
-            )
-            if (nrow(parsed) == 0L) break
-            pages[[length(pages) + 1L]] <- parsed
-            got <- got + nrow(parsed)
-            if (nrow(parsed) < want) break
-            start <- start + nrow(parsed)
+    fields <- c("scientificName", "decimalLongitude", "decimalLatitude", "datasetKey",
+                "key", .GBIF_OCC_TAXON_FIELDS)
+    cols <- lapply(fields, function(field) {
+        vapply(recs, function(r) {
+            v <- r[[field]]
+            if (length(v) != 1L) NA_character_ else as.character(v)
+        }, FUN.VALUE = character(1))
+    })
+    as.data.frame(stats::setNames(cols, fields), stringsAsFactors = FALSE)
+}
+
+#' One GBIF occurrence search inside a query polygon
+#' @noRd
+gbif_occ_request <- function(wkt, query) {
+    gbif_request(c("occurrence", "search"),
+                 query = c(list(geometry = wkt, country = "BR", hasCoordinate = "true"), query),
+                 rate = GBIF_OCC_RATE, realm = "gbif-occurrence", timeout = 60)
+}
+
+#' Records per taxon inside a query polygon, from one facet search
+#'
+#' The `taxonKey` facet counts, for each taxon, the records that a search on
+#' its key finds: the records of the taxon, of its synonyms and of its children.
+#' Thus one search tells which taxa have records near the area, and how many.
+#'
+#' @param wkt Query polygon.
+#' @return Named integer vector (taxon key to records), or NULL when the
+#'   search failed.
+#' @noRd
+gbif_occ_taxon_counts <- function(wkt) {
+    counts <- integer(0)
+    offset <- 0L
+    repeat {
+        req <- gbif_occ_request(wkt, list(limit = 0L, facet = "taxonKey",
+                                          facetLimit = .GBIF_FACET_PAGE,
+                                          facetOffset = offset))
+        res <- tryCatch(gbif_perform_parallel(list(req), max_active = 1L)[[1L]],
+                        error = function(e) NULL)
+        body <- gbif_response_body(res)
+        if (is.null(body)) {
+            return(NULL)
         }
-        out <- if (length(pages) == 0L) empty else do.call(rbind, pages)
-        .gbif_occ_flag_error(out, FALSE)
-    }, error = function(e) {
-        warning(sprintf("GBIF occurrence lookup failed for '%s': %s", name, conditionMessage(e)))
-        .gbif_occ_flag_error(empty, TRUE)
+        page <- if (length(body$facets) > 0L) body$facets[[1L]]$counts else list()
+        counts <- c(counts, stats::setNames(
+            vapply(page, function(x) as.integer(x$count), integer(1)),
+            vapply(page, function(x) as.character(x$name), character(1))
+        ))
+        if (length(page) < .GBIF_FACET_PAGE) {
+            return(counts)
+        }
+        offset <- offset + .GBIF_FACET_PAGE
+    }
+}
+
+#' Group taxa into occurrence searches of one page each
+#'
+#' A taxon with more records than one page gets a search of its own, and keeps
+#' the first page: the same cap as one search per species. The other taxa
+#' share searches (first-fit decreasing), and each search holds at most
+#' `limit` records and `max_keys` keys.
+#'
+#' @param counts Named integer vector: records per taxon key, each above 0.
+#' @param limit Records per page.
+#' @param max_keys Keys that fit in one search URL.
+#' @return List of character vectors of taxon keys, one per search.
+#' @noRd
+gbif_occ_plan <- function(counts, limit, max_keys) {
+    big <- names(counts)[counts > limit]
+    small <- sort(counts[counts <= limit], decreasing = TRUE)
+    groups <- list()
+    room <- integer(0)
+    for (k in names(small)) {
+        fit <- which(room >= small[[k]] & lengths(groups) < max_keys)[1L]
+        if (is.na(fit)) {
+            groups[[length(groups) + 1L]] <- k
+            room <- c(room, limit - small[[k]])
+        } else {
+            groups[[fit]] <- c(groups[[fit]], k)
+            room[[fit]] <- room[[fit]] - small[[k]]
+        }
+    }
+    c(as.list(big), groups)
+}
+
+#' Fetch GBIF occurrences for many (species, block) pairs with few searches
+#'
+#' The live path of [gbif_occ_in_buffer()]. One search per species hit the GBIF
+#' limit: 1924 searches for three areas ran for more than 40 minutes (ADR-031).
+#' Per query polygon, this path sends one facet search
+#' ([gbif_occ_taxon_counts()]), and then grouped searches for the taxa with
+#' records only ([gbif_occ_plan()]). A name goes through its GBIF key
+#' ([gbif_match_keys()]), and the records of a grouped search are split by
+#' their taxon keys.
+#'
+#' Degrades gracefully: a pair whose lookup fails (offline, still rate-limited
+#' after the retries, httr2 missing) gives an empty table flagged as failed,
+#' never an abort (LESSONS L-003). A name that GBIF does not know has no
+#' records: an empty table, not a failure.
+#'
+#' @param names,wkts Character vectors of the same length, one pair each.
+#' @param max_records Records per taxon, capped at 300 (one GBIF page).
+#' @return List of tables in the [gbif_occ_parse()] schema, one per pair, each
+#'   tagged with a `"gbif_error"` attribute: `TRUE` when the lookup failed,
+#'   `FALSE` when it succeeded (possibly with 0 rows). This lets callers tell
+#'   "we could not check" from "genuinely absent".
+#' @noRd
+gbif_occ_fetch_grouped <- function(names, wkts, max_records = 300L) {
+    empty <- gbif_occ_parse(NULL)
+    failed <- .gbif_occ_flag_error(empty, TRUE)
+    if (length(names) == 0L) {
+        return(list())
+    }
+    if (!has_httr2()) {
+        warning("Package 'httr2' is not installed; skipping GBIF occurrences.")
+        return(rep(list(failed), length(names)))
+    }
+    limit <- min(as.integer(max_records), 300L)
+    uniq <- unique(names)
+    keys <- gbif_match_keys(uniq)
+    key_of <- stats::setNames(keys$occurrenceKey, uniq)
+    known <- stats::setNames(keys$known, uniq)
+    blocks <- unique(wkts)
+    counts <- lapply(blocks, gbif_occ_taxon_counts)
+
+    # One entry per search: its block, its keys, and whether the page holds
+    # all the records of those keys.
+    plan <- list()
+    for (b in seq_along(blocks)) {
+        mine <- unique(key_of[names[wkts == blocks[[b]]]])
+        cnt <- counts[[b]][intersect(mine[!is.na(mine)], names(counts[[b]]))]
+        if (length(cnt) == 0L) {
+            next
+        }
+        base <- nchar(gbif_occ_request(blocks[[b]], list(limit = limit, offset = 0L))$url)
+        per_key <- nchar("&taxonKey=") + max(nchar(names(cnt)))
+        max_keys <- max(1L, (.GBIF_URL_MAX_CHARS - base) %/% per_key)
+        for (grp in gbif_occ_plan(cnt, limit, max_keys)) {
+            plan[[length(plan) + 1L]] <- list(block = b, keys = grp,
+                                              whole = sum(cnt[grp]) <= limit)
+        }
+    }
+    reqs <- lapply(plan, function(p) {
+        gbif_occ_request(blocks[[p$block]], list(taxonKey = p$keys, limit = limit,
+                                                 offset = 0L, .multi = "explode"))
+    })
+    res <- tryCatch(gbif_perform_parallel(reqs, max_active = GBIF_OCC_MAX_ACTIVE),
+                    error = function(e) vector("list", length(reqs)))
+
+    # Points per (block, key). If a search that holds all its records by the
+    # facet counts has more records, some of them are lost: its taxa fail.
+    got <- list()
+    lost <- character(0)
+    for (i in seq_along(plan)) {
+        ids <- paste(plan[[i]]$block, plan[[i]]$keys)
+        body <- gbif_response_body(res[[i]])
+        if (is.null(body) || (plan[[i]]$whole && !isTRUE(body$endOfRecords))) {
+            lost <- c(lost, ids)
+            next
+        }
+        rec <- gbif_occ_results(body)
+        keymat <- if (is.null(rec)) NULL else as.matrix(rec[.GBIF_OCC_TAXON_FIELDS])
+        for (j in seq_along(ids)) {
+            mine <- rec
+            # A search with one key needs no split.
+            if (!is.null(rec) && length(ids) > 1L) {
+                hit <- rowSums(keymat == plan[[i]]$keys[[j]], na.rm = TRUE) > 0L
+                mine <- rec[hit, , drop = FALSE]
+            }
+            got[[ids[[j]]]] <- gbif_occ_parse(mine)
+        }
+    }
+
+    lapply(seq_along(names), function(i) {
+        b <- match(wkts[[i]], blocks)
+        key <- key_of[[names[[i]]]]
+        if (!known[[names[[i]]]]) {
+            return(failed)
+        }
+        if (is.na(key)) {
+            return(.gbif_occ_flag_error(empty, FALSE))
+        }
+        id <- paste(b, key)
+        if (is.null(counts[[b]]) || id %in% lost) {
+            return(failed)
+        }
+        .gbif_occ_flag_error(got[[id]] %||% empty, FALSE)
     })
 }
 
@@ -430,26 +524,26 @@ gbif_occ_fetch_species <- function(name, wkt, max_records = 300L,
 #' caller passes only the species that still need checking (e.g.
 #' `dwc_unvalidated_names()`), keeping the geo step aligned with the cascade's
 #' skip-already-validated optimization. An empty `names` never touches the
-#' network. Session-memoized like `provider_gbif`; the cache resets when the
-#' buffer (WKT) changes.
+#' network. Session-memoized per area ([gbif_occ_store()]), so a second run over
+#' the same areas asks GBIF nothing again.
 #'
 #' @param names Character vector of scientific names.
 #' @param buffer The `buffer` slot from `geo_buffer()` (`sfc`, EPSG:4326).
 #' @param max_records Per-species record cap.
-#' @param page_size Records per request.
-#' @param fetch Per-species fetch seam; defaults to [gbif_occ_fetch_species()].
-#' @param throttle Seconds to pause between live species queries (GBIF etiquette
-#'   — proactively spacing requests avoids the 429 storm). Cached species do not
-#'   count against it.
-#' @param sleep Sleep seam for the throttle; defaults to `Sys.sleep`.
+#' @param page_size Records per request (per-species seam only).
+#' @param fetch Per-species fetch seam `(name, wkt, max_records, page_size)`, one
+#'   request at a time (tests). `NULL`, the default, sends the live searches of
+#'   [gbif_occ_fetch_grouped()] (ADR-031).
+#' @param throttle Seconds to pause between two `fetch` calls (GBIF etiquette).
+#'   The live path has its own throttle in [gbif_request()].
+#' @param sleep Sleep seam for the `fetch` throttle.
 #' @return Data frame in the [gbif_occ_parse()] schema (all species combined),
 #'   tagged with a `"failed"` attribute: the character vector of names whose
 #'   lookup failed (rate-limited/offline). Failed names are NOT cached, so a
 #'   later re-run retries them.
 #' @noRd
 gbif_occ_in_buffer <- function(names, buffer, max_records = 300L,
-                               page_size = 300L,
-                               fetch = gbif_occ_fetch_species,
+                               page_size = 300L, fetch = NULL,
                                throttle = 0.25, sleep = Sys.sleep) {
     empty <- gbif_occ_parse(NULL)
     names_chr <- unique(as.character(names))
@@ -465,50 +559,74 @@ gbif_occ_in_buffer <- function(names, buffer, max_records = 300L,
     }
     # The cache is keyed on the whole block set, not one polygon: changing how
     # the buffer splits changes what a species lookup means.
-    key <- paste(wkts, collapse = "\n")
-    if (!identical(.gbif_occ_cache$wkt, key)) {
-        .gbif_occ_cache$wkt <- key
-        .gbif_occ_cache$by_name <- new.env(parent = emptyenv())
+    store <- gbif_occ_store(paste(wkts, collapse = "\n"))
+
+    todo <- names_chr[vapply(names_chr, function(nm) is.null(store[[nm]]), logical(1))]
+    # One job per (species, block): a fragmented area has one per block.
+    job_name <- rep(todo, each = length(wkts))
+    job_wkt <- rep(wkts, times = length(todo))
+    pages <- if (length(todo) == 0L) {
+        list()
+    } else if (is.null(fetch)) {
+        gbif_occ_fetch_grouped(job_name, job_wkt, max_records)
+    } else {
+        # The throttle spaces REQUESTS, not species. A fragmented area sends one
+        # request per block, and firing a species' blocks back-to-back trips
+        # GBIF's 429 just as fast as firing one request per species did.
+        lapply(seq_along(job_name), function(i) {
+            if (i > 1L && throttle > 0) {
+                sleep(throttle)
+            }
+            fetch(job_name[[i]], job_wkt[[i]], max_records, page_size)
+        })
     }
-    store <- .gbif_occ_cache$by_name
 
     failed <- character(0)
-    queried <- FALSE
-    # The throttle spaces REQUESTS, not species. A fragmented area sends one
-    # request per block, and firing a species' blocks back-to-back trips GBIF's
-    # 429 just as fast as firing one request per species did.
-    fetch_block <- function(nm, wkt) {
-        if (queried && throttle > 0) {
-            sleep(throttle)
-        }
-        queried <<- TRUE
-        fetch(nm, wkt, max_records, page_size)
-    }
-
-    parts <- lapply(names_chr, function(nm) {
-        if (!is.null(store[[nm]])) {
-            return(store[[nm]])
-        }
-        pages <- lapply(wkts, function(w) fetch_block(nm, w))
+    for (nm in todo) {
+        mine <- pages[job_name == nm]
         # One failed block is enough to miss a real occurrence, so the species
         # stays "could not check" and uncached instead of being called absent.
-        if (any(vapply(pages, function(p) isTRUE(attr(p, "gbif_error")), logical(1)))) {
-            failed <<- c(failed, nm)
-            return(empty)
+        if (any(vapply(mine, function(p) isTRUE(attr(p, "gbif_error")), logical(1)))) {
+            failed <- c(failed, nm)
+            next
         }
-        pts <- do.call(rbind, pages)
+        pts <- do.call(rbind, mine)
         if (nrow(pts) > 0L) {
             pts$species <- nm
         }
-        pts <- .gbif_occ_refine(pts, buffer)
-        pts <- .gbif_occ_dedupe(pts)
-        store[[nm]] <- pts
-        pts
-    })
-    parts <- parts[vapply(parts, function(p) nrow(p) > 0L, logical(1))]
+        store[[nm]] <- .gbif_occ_dedupe(.gbif_occ_refine(pts, buffer))
+    }
+
+    parts <- lapply(names_chr, function(nm) store[[nm]])
+    parts <- parts[vapply(parts, function(p) !is.null(p) && nrow(p) > 0L, logical(1))]
     out <- if (length(parts) == 0L) empty else do.call(rbind, parts)
     attr(out, "failed") <- unique(failed)
     out
+}
+
+#' The occurrence cache of one area (one block set)
+#'
+#' One cache per area, so a run over three areas, and a second run, reuse what
+#' GBIF already answered. A single shared cache was reset by each new area, so
+#' a second run searched every area but the last one again. The number of
+#' areas is capped: one R process serves every session and lives for days.
+#'
+#' @param key The area key: its query polygons, pasted.
+#' @return The environment that maps a species name to its point table.
+#' @noRd
+gbif_occ_store <- function(key) {
+    stores <- .gbif_occ_cache$stores
+    if (is.null(stores)) {
+        stores <- list()
+    }
+    if (is.null(stores[[key]])) {
+        stores[[key]] <- new.env(parent = emptyenv())
+        if (length(stores) > .GBIF_OCC_CACHE_MAX_AREAS) {
+            stores <- stores[-1L]
+        }
+        .gbif_occ_cache$stores <- stores
+    }
+    stores[[key]]
 }
 
 #' Per-species "has a GBIF occurrence inside the buffer" flags

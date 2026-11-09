@@ -15,7 +15,7 @@
 #   4. Register it with one line in register_default_providers().
 #   5. Run devtools::test() (includes expect_valid_provider); if green, deploy.
 #
-# The ONE hard rule: query() must return the canonical 18-column schema. Build a
+# The ONE hard rule: query() must return the canonical schema. Build a
 # partial data frame with whatever columns your base has and let
 # normalize_provider_result() fill the rest — you never memorise the schema.
 # Mirror R/provider_florabr.R + R/provider_br_helpers.R for the real patterns.
@@ -61,7 +61,7 @@ template_map_status <- function(status) {
 #'
 #' The contract's only hard requirement. Handles empty input, degrades
 #' gracefully on failure (returns an empty canonical frame instead of erroring),
-#' and finalises the 18-column schema via `normalize_provider_result()`.
+#' and finalises the canonical schema via `normalize_provider_result()`.
 #'
 #' @param names Character vector of normalized scientific names (from the cascade).
 #' @param data Pre-loaded base, or NULL to use the default source.

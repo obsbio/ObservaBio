@@ -200,14 +200,15 @@ geo_name_map <- function(records, cascade, name_col = "scientificName") {
 #' @param providers Providers for the distribution cross-check.
 #' @param uf_biomes `list(states, biomes)` layer.
 #' @param buffer_m Buffer distance in metres.
-#' @param fetch Per-species GBIF fetch seam (test hook).
+#' @param fetch Per-species GBIF fetch seam (test hook). `NULL`, the default,
+#'   sends the live requests in parallel (see [gbif_occ_in_buffer()]).
 #' @return List with `area`, `buffer`, `crs_metric`, `dist_m`, `occ`,
 #'   `area_states`, `area_biomes`, `per_species`, `gbif_failed`.
 #' @noRd
 run_geo_verification_one <- function(area, cascade,
                                      providers = get_providers(),
                                      uf_biomes = NULL, buffer_m = 10000,
-                                     fetch = gbif_occ_fetch_species) {
+                                     fetch = NULL) {
     buf <- geo_buffer(area, dist_m = buffer_m)
     if (is.null(uf_biomes)) {
         uf_biomes <- load_br_uf_biomes()
@@ -359,7 +360,8 @@ geo_combine_areas <- function(per) {
 #' @param providers Providers for the distribution cross-check.
 #' @param uf_biomes Optional `list(states, biomes)` layer (default: embedded).
 #' @param buffer_m Buffer distance in metres.
-#' @param fetch Per-species GBIF fetch seam (test hook).
+#' @param fetch Per-species GBIF fetch seam (test hook). `NULL`, the default,
+#'   sends the live requests in parallel (see [gbif_occ_in_buffer()]).
 #' @return List with `areas` (the per-area results), the combined `area`,
 #'   `buffer`, `occ`, `per_species` (both with an `area` column), `area_states`,
 #'   `area_biomes`, `distribution_flags` (keyed by [area_flag_key()]),
@@ -368,7 +370,7 @@ geo_combine_areas <- function(per) {
 run_geo_verification <- function(areas, cascade,
                                  providers = get_providers(),
                                  uf_biomes = NULL, buffer_m = 10000,
-                                 fetch = gbif_occ_fetch_species) {
+                                 fetch = NULL) {
     resolved <- geo_resolve_areas(areas)
     if (is.null(resolved)) {
         return(NULL)

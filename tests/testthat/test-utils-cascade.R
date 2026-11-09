@@ -2,10 +2,17 @@ test_that("normalize_scientific_name strips authors and qualifiers", {
     expect_equal(normalize_scientific_name("Panthera onca (Linnaeus, 1771)"), "Panthera onca")
     expect_equal(normalize_scientific_name("handroanthus impetiginosus"), "Handroanthus impetiginosus")
     expect_equal(normalize_scientific_name("Cedrela cf. fissilis"), "Cedrela fissilis")
-    # Genus + sp. marker collapses to NA (no resolvable epithet)
-    expect_true(is.na(normalize_scientific_name("Inga sp.")))
     expect_true(is.na(normalize_scientific_name("")))
     expect_true(is.na(normalize_scientific_name(NA)))
+})
+
+test_that("normalize_scientific_name queries a Genus sp. placeholder as its genus", {
+    # The record is identified to genus, so the genus still gives it a kingdom
+    # and a family. A bare marker names nothing.
+    expect_equal(normalize_scientific_name("Inga sp."), "Inga")
+    expect_equal(normalize_scientific_name("Oecomys spp."), "Oecomys")
+    expect_equal(normalize_scientific_name("Scinax sp. (gr. ruber)"), "Scinax")
+    expect_true(is.na(normalize_scientific_name("sp.")))
 })
 
 test_that("normalize_scientific_name keeps infraspecific rank tokens", {
@@ -32,6 +39,16 @@ test_that("normalize_scientific_name strips lowercase author particles", {
     )
 })
 
+test_that("normalize_scientific_name drops an author with an apostrophe", {
+    # `d'Orbigny` starts in lower case, so it passed for an epithet.
+    expect_equal(normalize_scientific_name("Picumnus albosquamatus d'Orbigny, 1840"),
+                 "Picumnus albosquamatus")
+    expect_equal(normalize_scientific_name("Saltator similis d'Orbigny & Lafresnaye, 1837"),
+                 "Saltator similis")
+    expect_equal(normalize_scientific_name("Merremia flagellaris (Choisy) O\u2019Donnell"),
+                 "Merremia flagellaris")
+})
+
 test_that("normalize_scientific_name drops a dangling rank marker (author filius)", {
     # "Hallier f." is the author, not the forma rank: the marker names nothing.
     expect_equal(
@@ -56,6 +73,23 @@ test_that("scientific_name_components derives genus/epithet/rank from the name",
     expect_equal(got$genus, c("Panthera", "Cedrela", "Inga", "Handroanthus", NA))
     expect_equal(got$specificEpithet, c("onca", "odorata", NA, NA, NA))
     expect_equal(got$taxonRank, c("species", "species", "genus", "genus", NA))
+})
+
+test_that("scientific_name_components reads a third epithet as infraspecific", {
+    got <- scientific_name_components(c(
+        "Canis lupus familiaris",      # zoological trinomial -> subspecies
+        "Cissus erosa subsp. erosa",   # marker names the rank
+        "Aus bus var. cus",
+        "Malva sylvestris f. sylvestris",
+        "Mentha x piperita",           # hybrid marker is not an epithet
+        "Aus bus var."                 # marker with no epithet -> species
+    ))
+    expect_equal(got$specificEpithet,
+                 c("lupus", "erosa", "bus", "sylvestris", "piperita", "bus"))
+    expect_equal(got$infraspecificEpithet,
+                 c("familiaris", "erosa", "cus", "sylvestris", NA, NA))
+    expect_equal(got$taxonRank,
+                 c("subspecies", "subspecies", "variety", "form", "species", "species"))
 })
 
 test_that("scientific_name_components normalizes case and never yields 'cf' as epithet", {
@@ -85,11 +119,42 @@ test_that("normalize_provider_result never overwrites parts the base did supply"
         query_name = "Panthera onca",
         scientificName = "Panthera onca",
         validation_status = "accepted",
-        genus = "Panthera", specificEpithet = "onca", taxonRank = "Species",
+        genus = "Panthera", specificEpithet = "onca", taxonRank = "Subspecies",
         stringsAsFactors = FALSE
     )
     out <- normalize_provider_result(df, "gbif")
-    expect_equal(out$taxonRank, "Species")   # base value kept, not "species"
+    expect_equal(out$taxonRank, "subspecies")   # base value kept, not "species"
+})
+
+test_that("normalize_provider_result writes taxonRank in lower case", {
+    # Flora do Brasil writes "Species", every other source writes "species".
+    df <- data.frame(query_name = "Cedrela odorata", scientificName = "Cedrela odorata",
+                     validation_status = "accepted", taxonRank = "Species",
+                     stringsAsFactors = FALSE)
+    expect_equal(normalize_provider_result(df, "florabr")$taxonRank, "species")
+})
+
+test_that("normalize_provider_result puts no family name in genus", {
+    # A family is one word, like a genus, so only the base rank tells them apart.
+    df <- data.frame(
+        query_name = c("Chironomidae", "Handroanthus"),
+        scientificName = c("Chironomidae", "Handroanthus"),
+        validation_status = "accepted",
+        taxonRank = c("family", NA),
+        stringsAsFactors = FALSE
+    )
+    out <- normalize_provider_result(df, "gbif")
+    expect_equal(out$genus, c(NA, "Handroanthus"))
+    expect_equal(out$taxonRank, c("family", "genus"))
+})
+
+test_that("normalize_provider_result fills the infraspecific epithet from the name", {
+    df <- data.frame(query_name = "Canis lupus familiaris",
+                     scientificName = "Canis lupus familiaris",
+                     validation_status = "accepted", stringsAsFactors = FALSE)
+    out <- normalize_provider_result(df, "gbif")
+    expect_equal(out$infraspecificEpithet, "familiaris")
+    expect_equal(out$taxonRank, "subspecies")
 })
 
 test_that("has_name_qualifier detects cf./aff./sp. markers, including pipe-joined", {

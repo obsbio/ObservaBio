@@ -4,14 +4,16 @@
 # two ObservaBio deliverables (SPEC §9):
 #   1. standardized DwC sheet — one row per record, the input column model
 #      preserved, taxonomy filled for newly resolved names.
-#   2. audit table — one decision per name, plus its `nao_resolvidos` subset.
+#   2. audit table — one decision per name (one row per name and study area
+#      when the geo check ran), plus its `nao_resolvidos` subset.
 # Pure functions with no Shiny coupling; utils_export.R writes them to .xlsx.
 #
-# Scope note (SPEC §4/§16.2): the canonical schema carries no
-# `scientificNameAuthorship`, so this layer fills only the canonical taxonomy
-# columns. Non-canonical model columns (e.g. authorship) are preserved from the
-# upload but never synthesized here. The Saira DwC-mapping module and its term
-# catalog are out of scope (SPEC §3), so no `dwc_terms.rds` is used.
+# Scope note: this layer fills only the columns of the canonical schema
+# (provider_contract.R), which includes the authorship, establishmentMeans and
+# taxonRemarks that the BR bases carry (ADR-029). Other model columns are
+# preserved from the upload but never synthesized here. The Saira DwC-mapping
+# module and its term catalog are out of scope (SPEC §3), so no
+# `dwc_terms.rds` is used.
 
 # ---------------------------------------------------------------------------
 # Standardized DwC output (one row per record)
@@ -23,7 +25,41 @@ dwc_taxonomy_columns <- function() {
     c("scientificName", "taxonID", "taxonRank", "taxonomicStatus",
       "acceptedNameUsageID", "kingdom", "phylum", "class", "order",
       "family", "genus", "specificEpithet", "infraspecificEpithet",
-      "vernacularName")
+      "vernacularName", "scientificNameAuthorship", "establishmentMeans",
+      "taxonRemarks")
+}
+
+#' Columns that spell out the resolved name itself
+#'
+#' The cascade value replaces the input even when it is empty, so a record
+#' never mixes parts of two names: in one real sheet, the author "Maas" sat in
+#' `infraspecificEpithet`. Every other column keeps its input value when the
+#' cascade has none (ADR-029).
+#' @noRd
+dwc_name_columns <- function() {
+    c("scientificName", "taxonID", "taxonRank", "taxonomicStatus",
+      "acceptedNameUsageID", "genus", "specificEpithet", "infraspecificEpithet")
+}
+
+#' Author that the user typed after a name, e.g. "(Linnaeus, 1766)"
+#'
+#' The typed name must start with the output name, and the rest must look like
+#' an author: it starts with a capital letter or "(". So "sp." or an epithet
+#' after the name is not taken for an author.
+#'
+#' @param typed Character vector of names as uploaded.
+#' @param name Character vector of output names, same length.
+#' @return Character vector of authorship strings, NA where there is none.
+#' @noRd
+typed_authorship <- function(typed, name) {
+    typed <- gsub("\\s+", " ", trimws(as.character(typed)))
+    name <- gsub("\\s+", " ", trimws(as.character(name)))
+    out <- rep(NA_character_, length(typed))
+    ok <- !is.na(typed) & !is.na(name) & nzchar(name) &
+        startsWith(tolower(typed), paste0(tolower(name), " "))
+    rest <- trimws(substring(typed[ok], nchar(name[ok]) + 2L))
+    out[ok] <- ifelse(grepl("^[A-Z(]", rest), rest, NA_character_)
+    out
 }
 
 #' Add any missing columns as empty character columns (like the script's ensure_cols)
@@ -149,6 +185,7 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
     records <- ensure_columns(records, unique(c(model_cols, name_col)))
 
     prefilled <- dwc_prefilled_mask(records)
+    typed_names <- as.character(records[[name_col]])
 
     # Normalized name per row, reused to join both resolved taxonomy and the geo
     # flag back onto records.
@@ -165,12 +202,28 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
         idx <- match(keys, as.character(cascade$query_name))
         fill_rows <- which(!prefilled & !is.na(idx))
         if (length(fill_rows) > 0L) {
+            # An empty cascade value never erases an input value outside the
+            # name columns. It erased 166 MMA labels and 67 vernacular names on
+            # rows whose name the cascade could not resolve.
             for (col in dwc_taxonomy_columns()) {
                 if (!col %in% names(cascade)) {
                     next
                 }
                 records <- ensure_columns(records, col)
-                records[[col]][fill_rows] <- as.character(cascade[[col]][idx[fill_rows]])
+                vals <- as.character(cascade[[col]][idx[fill_rows]])
+                if (!col %in% dwc_name_columns()) {
+                    vals <- fill_blank_values(vals, records[[col]][fill_rows])
+                }
+                records[[col]][fill_rows] <- vals
+            }
+            # The cascade queries the name without its author. When no base gives
+            # an author, keep the one that the user typed after the name.
+            if ("scientificNameAuthorship" %in% names(records)) {
+                typed <- typed_authorship(typed_names[fill_rows],
+                                          records[[name_col]][fill_rows])
+                records$scientificNameAuthorship[fill_rows] <- fill_blank_values(
+                    records$scientificNameAuthorship[fill_rows], typed
+                )
             }
             # Conservation status, only when resolve_threat_status() enriched the
             # cascade and the model actually has the target column (do not invent
@@ -185,7 +238,8 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
                 if (identical(model_col, "status")) {
                     vals <- format_mma_status_label(vals)
                 }
-                records[[model_col]][fill_rows] <- vals
+                records[[model_col]][fill_rows] <-
+                    fill_blank_values(vals, records[[model_col]][fill_rows])
             }
         }
     }
@@ -247,7 +301,7 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
 }
 
 # ---------------------------------------------------------------------------
-# Audit table (one decision per name)
+# Audit table (one decision per name, one row per name and area)
 # ---------------------------------------------------------------------------
 
 #' Audit column order (SPEC §9)
@@ -297,17 +351,16 @@ audit_attach_invasive <- function(audit, invasive_sources) {
 
 #' Append the geo verification columns to an audit table
 #'
-#' The audit stays **one row per name** (SPEC §9) — the taxonomic decision it
-#' records is not per-area — so a name verified in several study areas gets its
-#' flags collapsed as `"Área A: confirmada; Área B: sem registro…"`, its
-#' `gbifRecords` summed, and `areaName`/`areaStates`/`areaBiomes` listing only
-#' the areas that name actually occurs in. The per-record DwC output carries the
-#' exact per-area flag, so nothing is lost. A `NULL` geo (no shapefile) leaves
-#' the audit unchanged.
+#' The audit has **one row per name and study area** (ADR-030). A name verified
+#' in two areas gets two rows, each with the flag, the GBIF record count and the
+#' UFs/biomes of its own area. The taxonomic columns repeat on each row. A name
+#' that no area verified keeps one row with empty geo columns. A `NULL` geo (no
+#' shapefile) leaves the audit unchanged.
 #'
 #' @param audit Base audit data frame (has `queryName`).
 #' @param geo `run_geo_verification()` result, or `NULL`.
-#' @return `audit`, with the geo columns appended when `geo` is non-NULL.
+#' @return `audit` with the geo columns appended, one row per (name, area), when
+#'   `geo` is non-NULL.
 #' @noRd
 audit_attach_geo <- function(audit, geo) {
     if (is.null(geo)) {
@@ -321,50 +374,42 @@ audit_attach_geo <- function(audit, geo) {
 
     areas <- geo$areas %||% list()
     area_names <- vapply(areas, function(a) as.character(a$name), character(1))
-    area_ufb <- function(names_used, key) {
-        collapse_or_na(unlist(
-            lapply(areas[match(names_used, area_names)], function(a) a[[key]]),
-            use.names = FALSE
-        ))
+    area_value <- function(names_used, key) {
+        vapply(names_used, function(nm) {
+            i <- match(nm, area_names)
+            if (is.na(i)) NA_character_ else collapse_or_na(areas[[i]][[key]])
+        }, FUN.VALUE = character(1), USE.NAMES = FALSE)
     }
-
-    n <- nrow(audit)
-    audit$distributionFlag <- NA_character_
-    audit$gbifRecords <- NA_integer_
-    audit$areaName <- NA_character_
-    audit$areaStates <- NA_character_
-    audit$areaBiomes <- NA_character_
 
     ps <- geo$per_species
-    if (is.data.frame(ps) && nrow(ps) > 0L && n > 0L) {
-        has_area <- "area" %in% names(ps)
+    hits <- vector("list", nrow(audit))
+    if (is.data.frame(ps) && nrow(ps) > 0L && nrow(audit) > 0L) {
         by_name <- split(seq_len(nrow(ps)), as.character(ps$query_name))
         hits <- by_name[as.character(audit$queryName)]
-        for (i in seq_len(n)) {
-            rows <- hits[[i]]
-            if (is.null(rows)) {
-                next
-            }
-            flags <- as.character(ps$distributionFlag[rows])
-            used <- if (has_area) as.character(ps$area[rows]) else character(0)
-            audit$distributionFlag[[i]] <- if (length(rows) == 1L || !has_area) {
-                flags[[1L]]
-            } else {
-                paste(sprintf("%s: %s", used, flags), collapse = "; ")
-            }
-            audit$gbifRecords[[i]] <- sum(as.integer(ps$gbif_count[rows]), na.rm = TRUE)
-            audit$areaName[[i]] <- collapse_or_na(used)
-            audit$areaStates[[i]] <- area_ufb(used, "area_states")
-            audit$areaBiomes[[i]] <- area_ufb(used, "area_biomes")
+    }
+    ps_row <- unlist(lapply(hits, function(h) if (length(h) == 0L) NA_integer_ else h),
+                     use.names = FALSE)
+    ps_col <- function(name) {
+        if (!is.data.frame(ps) || !name %in% names(ps)) {
+            return(rep(NA_character_, length(ps_row)))
         }
+        as.character(ps[[name]])[ps_row]
     }
 
+    out <- audit[rep(seq_len(nrow(audit)), pmax(lengths(hits), 1L)), , drop = FALSE]
+    out$distributionFlag <- ps_col("distributionFlag")
+    out$gbifRecords <- suppressWarnings(as.integer(ps_col("gbif_count")))
+    out$areaName <- ps_col("area")
+    out$areaStates <- area_value(out$areaName, "area_states")
+    out$areaBiomes <- area_value(out$areaName, "area_biomes")
+
     # No per-area breakdown to draw on: fall back to the upload-wide union.
-    if (length(areas) == 0L) {
-        audit$areaStates <- collapse_or_na(geo$area_states)
-        audit$areaBiomes <- collapse_or_na(geo$area_biomes)
+    if (length(areas) == 0L && nrow(out) > 0L) {
+        out$areaStates <- collapse_or_na(geo$area_states)
+        out$areaBiomes <- collapse_or_na(geo$area_biomes)
     }
-    audit
+    rownames(out) <- NULL
+    out
 }
 
 #' Derive an audit matchType from the cascade validation_status
@@ -420,8 +465,9 @@ audit_original_names <- function(query_names, original_names = NULL) {
 #' @param cascade Canonical-schema cascade result.
 #' @param original_names Optional raw input names, used to fill `originalName`
 #'   (grouped by the normalized name). When omitted, `queryName` is reused.
-#' @param geo Optional `run_geo_verification()` result; when supplied, the four
-#'   geo columns ([audit_geo_columns()]) are appended (SPEC §9).
+#' @param geo Optional `run_geo_verification()` result; when supplied, the
+#'   geo columns ([audit_geo_columns()]) are appended, one row per name and
+#'   study area (ADR-030).
 #' @param invasive_sources Optional [resolve_invasive_flags()] result; when
 #'   supplied, the two [invasive_columns()] are appended.
 #' @return Data frame in [audit_columns()] order (plus the invasive columns when

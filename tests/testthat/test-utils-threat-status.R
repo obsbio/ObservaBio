@@ -58,6 +58,103 @@ test_that("IUCN helpers degrade gracefully with no network dependency in unit te
     expect_true(all(is.na(fetch_gbif_iucn_category(c(NA, NA)))))
 })
 
+test_that("gbif_match_usage_keys ignores a HIGHERRANK parent", {
+    # GBIF answers an unknown species with its genus. The genus key would give
+    # the species the IUCN category of the genus.
+    .gbif_match_cache$reset()
+    on.exit(.gbif_match_cache$reset(), add = TRUE)
+    httr2::local_mocked_responses(function(req) {
+        if (identical(httr2::url_parse(req$url)$query$name, "Hydropsalis albicollis")) {
+            httr2::response_json(body = list(usageKey = 2497010L, matchType = "HIGHERRANK"))
+        } else {
+            httr2::response_json(body = list(usageKey = 2475466L, matchType = "EXACT"))
+        }
+    })
+    expect_equal(gbif_match_usage_keys(c("Hydropsalis albicollis", "Megaceryle torquata")),
+                 c(NA_character_, "2475466"))
+})
+
+test_that("fetch_gbif_iucn_category reads the codes and does not cache a failure", {
+    .gbif_iucn_cache$reset()
+    on.exit(.gbif_iucn_cache$reset(), add = TRUE)
+    asked <- list()
+    local_mocked_bindings(gbif_perform_parallel = function(reqs, ...) {
+        urls <- vapply(reqs, function(r) r$url, character(1))
+        asked[[length(asked) + 1L]] <<- urls
+        lapply(urls, function(u) {
+            if (grepl("/species/2/", u, fixed = TRUE)) {
+                simpleError("timeout")
+            } else {
+                httr2::response_json(body = list(code = "VU"))
+            }
+        })
+    })
+    expect_equal(fetch_gbif_iucn_category(c("1", "2", "1")), c("VU", NA, "VU"))
+    # The next run asks again only for the key that failed.
+    fetch_gbif_iucn_category(c("1", "2"))
+    expect_length(asked[[2L]], 1L)
+    expect_match(asked[[2L]], "/species/2/", fixed = TRUE)
+})
+
+test_that("gbif_match_keys sends a synonym to its accepted taxon for occurrences", {
+    .gbif_match_cache$reset()
+    on.exit(.gbif_match_cache$reset(), add = TRUE)
+    httr2::local_mocked_responses(function(req) {
+        # GBIF files the records of Amazilia fimbriata under Chionomesa fimbriata.
+        httr2::response_json(body = list(usageKey = 2476422L, acceptedUsageKey = 10941997L,
+                                         status = "SYNONYM", matchType = "EXACT"))
+    })
+    keys <- gbif_match_keys("Amazilia fimbriata")
+    expect_equal(keys$usageKey, "2476422")          # the IUCN route keeps the name
+    expect_equal(keys$occurrenceKey, "10941997")
+    expect_true(keys$known)
+})
+
+test_that("gbif_match_keys does not cache a failed lookup", {
+    .gbif_match_cache$reset()
+    on.exit(.gbif_match_cache$reset(), add = TRUE)
+    calls <- 0L
+    httr2::local_mocked_responses(function(req) {
+        calls <<- calls + 1L
+        httr2::response(status_code = 503L, headers = list("Retry-After" = "0"))
+    })
+    expect_false(gbif_match_keys("Aus bus")$known)
+    gbif_match_keys("Aus bus")
+    expect_equal(calls, 2L * GBIF_MAX_TRIES)        # the next run asks again
+})
+
+# Retry-After: 0 keeps these tests fast. GBIF sends 3.
+test_that("gbif_perform_parallel retries only the transient failures", {
+    tries <- c(rate = 0L, bad = 0L, fine = 0L)
+    httr2::local_mocked_responses(function(req) {
+        path <- basename(httr2::url_parse(req$url)$path)
+        tries[[path]] <<- tries[[path]] + 1L
+        if (identical(path, "rate") && tries[[path]] < 3L) {
+            return(httr2::response(status_code = 429L, headers = list("Retry-After" = "0")))
+        }
+        if (identical(path, "bad")) {
+            return(httr2::response(status_code = 400L))
+        }
+        httr2::response_json(body = list(ok = TRUE))
+    })
+    reqs <- lapply(c("rate", "bad", "fine"), function(p) gbif_request(c("test", p)))
+    res <- gbif_perform_parallel(reqs)
+    expect_equal(vapply(res, httr2::resp_status, integer(1)), c(200L, 400L, 200L))
+    expect_equal(tries, c(rate = 3L, bad = 1L, fine = 1L))
+})
+
+test_that("gbif_perform_parallel stops after GBIF_MAX_TRIES and keeps the last answer", {
+    calls <- 0L
+    httr2::local_mocked_responses(function(req) {
+        calls <<- calls + 1L
+        httr2::response(status_code = 503L, headers = list("Retry-After" = "0"))
+    })
+    res <- gbif_perform_parallel(list(gbif_request(c("test", "down"))))
+    expect_equal(calls, GBIF_MAX_TRIES)
+    expect_equal(httr2::resp_status(res[[1L]]), 503L)
+    expect_true(gbif_is_transient(res[[1L]]))       # the caller does not cache it
+})
+
 test_that("resolve_threat_status attaches status columns without requiring IUCN", {
     df <- data.frame(
         scientificName = c("Aus bus", "Cus dus"),
@@ -115,6 +212,7 @@ test_that("resolve_threat_status fills iucnCriteria from the key route", {
     on.exit(.mma_cache$reset(), add = TRUE)
     local_mocked_bindings(
         iucn_key_route_enabled = function(key = NULL) TRUE,
+        iucn_category = function(scientific_names, taxon_ids = NA) "VU",
         fetch_iucn_rredlist = function(genus, specific, infra = NA, key = NULL) {
             data.frame(iucnCategory = "VU", iucnCriteria = "A2ac+3c",
                        stringsAsFactors = FALSE)
@@ -156,6 +254,58 @@ test_that("a key-route miss never erases the category the GBIF route can give", 
     out <- resolve_threat_status(df)
     expect_equal(out$iucnCategory, "NT")     # rescued, not NA
     expect_true(is.na(out$iucnCriteria))     # criteria stays exclusive
+})
+
+test_that("the key route asks only for species that can carry criteria", {
+    # The key route costs two IUCN calls per species, 0.5 s apart, and only adds
+    # `criteria`. So it runs for a threatened or near-threatened GBIF category,
+    # for a species GBIF gave no answer for, and for an MMA-listed species.
+    stub <- data.frame(
+        scientificName = "Dus eus", match_key = "dus eus",
+        category = "EN", source = "Portaria 148/2022", stringsAsFactors = FALSE
+    )
+    .mma_cache$set(stub)
+    on.exit(.mma_cache$reset(), add = TRUE)
+    asked <- NULL
+    local_mocked_bindings(
+        iucn_key_route_enabled = function(key = NULL) TRUE,
+        iucn_category = function(scientific_names, taxon_ids = NA) c("LC", "VU", NA, "LC"),
+        fetch_iucn_rredlist = function(genus, specific, infra = NA, key = NULL) {
+            asked <<- specific
+            data.frame(iucnCategory = c("VU", NA, "EN"), iucnCriteria = c("A2c", NA, "B1"),
+                       stringsAsFactors = FALSE)
+        }
+    )
+    df <- data.frame(
+        scientificName = c("Aus bus", "Bus cus", "Cus dus", "Dus eus"),
+        genus = c("Aus", "Bus", "Cus", "Dus"),
+        specificEpithet = c("bus", "cus", "dus", "eus"),
+        stringsAsFactors = FALSE
+    )
+    out <- resolve_threat_status(df, iucn_key = "KEY")
+    expect_equal(asked, c("cus", "dus", "eus"))    # not the LC one
+    # The IUCN's own category wins over the GBIF copy (LC -> EN).
+    expect_equal(out$iucnCategory, c("LC", "VU", NA, "EN"))
+    expect_equal(out$iucnCriteria, c(NA, "A2c", NA, "B1"))
+})
+
+test_that("fetch_iucn_rredlist pauses between live calls only", {
+    skip_if_not_installed("rredlist")
+    .iucn_rredlist_cache$reset()
+    on.exit(.iucn_rredlist_cache$reset(), add = TRUE)
+    local_mocked_bindings(
+        rl_species_latest = function(genus, species, infra = NULL, key = NULL,
+                                     parse = TRUE, ...) {
+            list(category = "LC", criteria = NA_character_)
+        },
+        .package = "rredlist"
+    )
+    naps <- 0L
+    nap <- function(s) naps <<- naps + 1L
+    fetch_iucn_rredlist(c("Aus", "Bus", "Cus"), c("a", "b", "c"), key = "KEY", sleep = nap)
+    expect_equal(naps, 2L)                 # between the three live calls
+    fetch_iucn_rredlist(c("Aus", "Bus"), c("a", "b"), key = "KEY", sleep = nap)
+    expect_equal(naps, 2L)                 # cached: no call, so no pause
 })
 
 test_that("extract_rredlist_assessment handles list, data.frame, and NULL", {
@@ -243,6 +393,7 @@ test_that("resolve_threat_status hands the session key to the key route", {
     seen <- NULL
     local_mocked_bindings(
         iucn_key_route_enabled = function(key = NULL) nzchar(as_iucn_key(key)),
+        iucn_category = function(scientific_names, taxon_ids = NA) "VU",
         fetch_iucn_rredlist = function(genus, specific, infra = NA, key = NULL) {
             seen <<- key
             data.frame(iucnCategory = "VU", iucnCriteria = "A2ac+3c",
@@ -346,6 +497,7 @@ test_that("the session key never reaches the console or the output columns", {
     on.exit(.mma_cache$reset(), add = TRUE)
     local_mocked_bindings(
         iucn_key_route_enabled = function(key = NULL) TRUE,
+        iucn_category = function(scientific_names, taxon_ids = NA) "VU",
         fetch_iucn_rredlist = function(genus, specific, infra = NA, key = NULL) {
             data.frame(iucnCategory = "VU", iucnCriteria = "A2c",
                        stringsAsFactors = FALSE)

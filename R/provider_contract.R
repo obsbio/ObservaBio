@@ -6,17 +6,32 @@
 #'
 #' Column order is stable; downstream code relies on these names. Derived from
 #' the Saira `normalize_provider_result` schema plus the DwC fields the
-#' original standardization script emitted.
+#' original standardization script emitted. The last three columns are taxon
+#' attributes that only some bases carry. A provider without them leaves them
+#' NA (ADR-029).
 #'
-#' @return Character vector of the 18 canonical column names.
+#' @return Character vector of the 21 canonical column names.
 #' @noRd
 canonical_schema_columns <- function() {
     c(
         "query_name", "scientificName", "taxonomicStatus", "validation_status",
         "match_count", "provider", "taxonID", "taxonRank", "acceptedNameUsageID",
         "kingdom", "phylum", "class", "order", "family", "genus",
-        "specificEpithet", "infraspecificEpithet", "vernacularName"
+        "specificEpithet", "infraspecificEpithet", "vernacularName",
+        "scientificNameAuthorship", "establishmentMeans", "taxonRemarks"
     )
+}
+
+#' Taxon ranks above genus
+#'
+#' A name at one of these ranks is one word, like a genus, so the name parser
+#' cannot tell them apart. The rank the base gives is the only reliable signal.
+#' @noRd
+supra_generic_ranks <- function() {
+    c("domain", "kingdom", "subkingdom", "phylum", "division", "subphylum",
+      "superclass", "class", "subclass", "infraclass", "superorder", "order",
+      "suborder", "infraorder", "parvorder", "superfamily", "family",
+      "subfamily", "tribe", "subtribe")
 }
 
 #' An empty data frame in the canonical schema (0 rows, correct types)
@@ -43,7 +58,7 @@ empty_canonical_result <- function() {
 #' helper only guarantees the schema — fills missing columns with NA, defaults
 #' `validation_status`/`match_count`, falls back `scientificName` to the query,
 #' stamps `provider`, and returns columns in canonical order. So a base author
-#' does not have to memorise the full 18-column schema.
+#' does not have to memorise the full canonical schema.
 #'
 #' @param df Data frame with at least `query_name`; other canonical columns
 #'   optional.
@@ -87,9 +102,15 @@ normalize_provider_result <- function(df, provider) {
     # contract boundary, so every provider benefits. Fills blanks only: a base
     # that does supply these keeps its own values.
     parts <- scientific_name_components(df$scientificName)
+    # Without this, a family name went into `genus` (`Chironomidae`).
+    parts$genus[tolower(df$taxonRank) %in% supra_generic_ranks()] <- NA_character_
     df$genus <- fill_blank_values(df$genus, parts$genus)
     df$specificEpithet <- fill_blank_values(df$specificEpithet, parts$specificEpithet)
+    df$infraspecificEpithet <- fill_blank_values(df$infraspecificEpithet,
+                                                 parts$infraspecificEpithet)
     df$taxonRank <- fill_blank_values(df$taxonRank, parts$taxonRank)
+    # Flora do Brasil writes "Species", the other sources write "species".
+    df$taxonRank <- tolower(df$taxonRank)
 
     df <- df[, canonical_schema_columns(), drop = FALSE]
     rownames(df) <- NULL

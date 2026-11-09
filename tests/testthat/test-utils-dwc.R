@@ -358,6 +358,99 @@ test_that("build_dwc_output ignores status columns the model does not carry", {
 })
 
 # ---------------------------------------------------------------------------
+# Never erase an input value; keep the author typed with the name (ADR-029).
+# ---------------------------------------------------------------------------
+
+# A row without taxonID/kingdom (so not prefilled) whose name the cascade cannot
+# resolve, carrying values that the user typed.
+unresolved_record <- function() {
+    data.frame(
+        scientificName = "Mycena albororida Maas",
+        taxonID = NA_character_, kingdom = NA_character_,
+        family = "Mycenaceae", infraspecificEpithet = "Maas",
+        vernacularName = "cogumelo", status = "(NE) Não avaliada",
+        statusIUCN = "NE", scientificNameAuthorship = NA_character_,
+        stringsAsFactors = FALSE
+    )
+}
+
+unresolved_cascade <- function() {
+    out <- build_cascade_placeholder("Mycena albororida")
+    out$statusMMA <- NA_character_
+    out$statusSourceMMA <- NA_character_
+    out$iucnCategory <- NA_character_
+    out$iucnCriteria <- NA_character_
+    out
+}
+
+test_that("build_dwc_output keeps an input value that the cascade leaves empty", {
+    records <- unresolved_record()
+    out <- build_dwc_output(records, unresolved_cascade(), model_cols = names(records))
+    expect_equal(out$vernacularName, "cogumelo")
+    expect_equal(out$status, "(NE) Não avaliada")
+    expect_equal(out$statusIUCN, "NE")
+    expect_equal(out$family, "Mycenaceae")
+})
+
+test_that("build_dwc_output still replaces the name columns, even with a blank", {
+    # "Maas" is an author typed in the wrong column: the resolved name has no
+    # infraspecific epithet, so the row must not keep one.
+    records <- unresolved_record()
+    out <- build_dwc_output(records, unresolved_cascade(), model_cols = names(records))
+    expect_equal(out$scientificName, "Mycena albororida")
+    expect_true(is.na(out$infraspecificEpithet))
+})
+
+test_that("build_dwc_output keeps the author typed after the name", {
+    records <- unresolved_record()
+    out <- build_dwc_output(records, unresolved_cascade(), model_cols = names(records))
+    expect_equal(out$scientificNameAuthorship, "Maas")
+})
+
+test_that("build_dwc_output prefers the base author and fills the base attributes", {
+    records <- data.frame(scientificName = "Handroanthus impetiginosus Mattos",
+                          taxonID = NA_character_, kingdom = NA_character_,
+                          scientificNameAuthorship = NA_character_,
+                          establishmentMeans = NA_character_,
+                          taxonRemarks = NA_character_, stringsAsFactors = FALSE)
+    cascade <- sample_cascade()[1, ]
+    cascade$scientificNameAuthorship <- "(Mart. ex DC.) Mattos"
+    cascade$establishmentMeans <- "native"
+    cascade$taxonRemarks <- "endemism=Non-endemic"
+    out <- build_dwc_output(records, cascade, model_cols = names(records))
+    expect_equal(out$scientificNameAuthorship, "(Mart. ex DC.) Mattos")
+    expect_equal(out$establishmentMeans, "native")
+    expect_equal(out$taxonRemarks, "endemism=Non-endemic")
+})
+
+test_that("typed_authorship takes only an author-like rest of the name", {
+    expect_equal(
+        typed_authorship(
+            c("Megaceryle torquata (Linnaeus, 1766)", "Ardea  alba Linnaeus, 1758",
+              "Oecomys sp.", "Canis lupus familiaris", "Leptodactylus aff. fuscus", NA),
+            c("Megaceryle torquata", "Ardea alba", "Oecomys", "Canis lupus",
+              "Leptodactylus fuscus", "Ardea alba")
+        ),
+        c("(Linnaeus, 1766)", "Linnaeus, 1758", NA, NA, NA, NA)
+    )
+})
+
+test_that("a Genus sp. record gets the taxonomy of its genus", {
+    records <- data.frame(scientificName = "Oecomys sp.", taxonID = NA_character_,
+                          kingdom = NA_character_, family = NA_character_,
+                          taxonRank = NA_character_, stringsAsFactors = FALSE)
+    cascade <- normalize_provider_result(data.frame(
+        query_name = "Oecomys", scientificName = "Oecomys",
+        validation_status = "accepted", kingdom = "Animalia", family = "Cricetidae",
+        taxonRank = "genus", stringsAsFactors = FALSE
+    ), "gbif")
+    out <- build_dwc_output(records, cascade, model_cols = names(records))
+    expect_equal(out$kingdom, "Animalia")
+    expect_equal(out$family, "Cricetidae")
+    expect_equal(out$taxonRank, "genus")
+})
+
+# ---------------------------------------------------------------------------
 # Skip already-validated rows before the cascade + IUCN (perf).
 # ---------------------------------------------------------------------------
 
