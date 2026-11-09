@@ -180,3 +180,23 @@ test_that("no shapefile leaves the panel empty and the payload areas NULL", {
         expect_null(session$getReturned()$data()$areas)
     })
 })
+
+test_that("two areas with one slug in one upload leave no directory (R03)", {
+    zips <- c(fake_shapefile_zip(), fake_shapefile_zip())
+    on.exit(unlink(zips), add = TRUE)
+    real_unpack <- unpack_area_files
+    made <- character(0)
+    testthat::local_mocked_bindings(unpack_area_files = function(paths, names) {
+        parsed <- real_unpack(paths, names)
+        made <<- c(made, vapply(parsed$areas, function(a) a$dir, character(1)))
+        parsed
+    })
+
+    shiny::testServer(mod_upload_server, {
+        session$setInputs(shapefile = file_input(zips, c("Area.zip", "area.zip")))
+        expect_length(made, 2L)
+        expect_equal(sum(dir.exists(made)), 1L)
+    })
+    # The session end removes the directory of the area that stayed.
+    expect_false(any(dir.exists(made)))
+})

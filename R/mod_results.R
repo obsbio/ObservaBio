@@ -285,7 +285,11 @@ mod_results_server <- function(id, result_r, visible_r = shiny::reactive(TRUE)) 
                             htmltools::htmlEscape(view$scientificName)),
                     ifelse(nzchar(badge), paste0(" ", badge), "")
                 ),
-                Família = ifelse(is.na(view$family) | !nzchar(view$family), "—", view$family),
+                # The table has escape = FALSE for the badges, so every value from
+                # the upload must be escaped here. An unescaped family let a
+                # sheet run a script in the page (audit A05).
+                Família = ifelse(is.na(view$family) | !nzchar(view$family), "—",
+                                 htmltools::htmlEscape(view$family)),
                 `Status taxonômico` = status_cell_html(view$matchType, view$validator),
                 Distribuição = flag_badge_html(view$distributionFlag),
                 check.names = FALSE, stringsAsFactors = FALSE

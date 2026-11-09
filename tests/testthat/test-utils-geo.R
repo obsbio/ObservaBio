@@ -323,3 +323,81 @@ test_that("classify_distribution_flag recycles a scalar and errors on a mismatch
     )
     expect_equal(classify_distribution_flag(logical(0), logical(0)), character(0))
 })
+
+# ---- Audit 2026-11-08: A04 -------------------------------------------------
+
+# A VRT that opens a GeoJSON outside the upload. GDAL identifies it by its
+# content, so the .kml extension alone does not stop it.
+make_disguised_vrt <- function() {
+    secret <- tempfile(fileext = ".geojson")
+    writeLines('{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[-47.123,-15.456]}}]}', secret)
+    vrt <- tempfile(fileext = ".kml")
+    writeLines(c(
+        "<OGRVRTDataSource>",
+        "  <OGRVRTLayer name=\"synthetic\">",
+        sprintf("    <SrcDataSource relativeToVRT=\"0\">%s</SrcDataSource>", secret),
+        "  </OGRVRTLayer>",
+        "</OGRVRTDataSource>"
+    ), vrt)
+    vrt
+}
+
+test_that("geo_read_area refuses a VRT renamed to .kml (A04)", {
+    vrt <- make_disguised_vrt()
+    expect_error(geo_read_area(vrt), "not a KML document")
+})
+
+test_that("geo_read_area refuses a VRT renamed to .kml inside a KMZ (A04)", {
+    skip_if_not_installed("zip")
+    src <- tempfile("kmzsrc")
+    dir.create(src)
+    file.copy(make_disguised_vrt(), file.path(src, "doc.kml"))
+    kmz <- tempfile(fileext = ".kmz")
+    zip::zipr(kmz, file.path(src, "doc.kml"))
+    res <- unpack_kmz(kmz)
+    on.exit(unlink(c(kmz, res$dir), recursive = TRUE), add = TRUE)
+    expect_error(geo_read_area(res$kml), "not a KML document")
+})
+
+test_that("geo_check_kml_content refuses DTDs, entities and NetworkLinks (A04)", {
+    write_kml <- function(lines) {
+        p <- tempfile(fileext = ".kml")
+        writeLines(lines, p)
+        p
+    }
+    xxe <- write_kml(c("<?xml version=\"1.0\"?>",
+                       "<!DOCTYPE kml [<!ENTITY x SYSTEM \"file:///etc/passwd\">]>",
+                       "<kml><Document>&x;</Document></kml>"))
+    expect_error(geo_check_kml_content(xxe), "not a KML document|DTD")
+    link <- write_kml(c("<kml xmlns=\"http://www.opengis.net/kml/2.2\"><NetworkLink>",
+                        "<Link><href>http://example.invalid/a.kml</href></Link>",
+                        "</NetworkLink></kml>"))
+    expect_error(geo_check_kml_content(link), "NetworkLink")
+    ok <- write_kml(c("﻿<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+                      "<!-- Google Earth -->",
+                      "<kml:kml xmlns:kml=\"http://www.opengis.net/kml/2.2\"></kml:kml>"))
+    expect_true(geo_check_kml_content(ok))
+})
+
+test_that("a KML with a comment of more than one line is accepted (R04)", {
+    write_kml <- function(lines) {
+        p <- tempfile(fileext = ".kml")
+        writeLines(lines, p)
+        p
+    }
+    ok <- write_kml(c(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<!--", "Generated study area", "-->",
+        "<kml xmlns=\"http://www.opengis.net/kml/2.2\">",
+        "  <Placemark><Point><coordinates>-47,-22</coordinates></Point></Placemark>",
+        "</kml>"
+    ))
+    on.exit(unlink(ok), add = TRUE)
+    expect_true(geo_check_kml_content(ok))
+    expect_gt(nrow(geo_read_area(ok)), 0L)
+
+    # A <kml> tag inside a comment does not hide the real root.
+    vrt <- write_kml(c("<!--", "<kml>", "-->", "<OGRVRTDataSource></OGRVRTDataSource>"))
+    on.exit(unlink(vrt), add = TRUE)
+    expect_error(geo_check_kml_content(vrt), "not a KML document")
+})

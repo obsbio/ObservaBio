@@ -146,3 +146,70 @@ test_that("unpack_area_files reports an unsupported extension by name", {
     expect_named(res$errors, "area.geojson")
     expect_match(res$errors[["area.geojson"]], "Unsupported area format")
 })
+
+# ---- Audit 2026-11-08: A06 -------------------------------------------------
+
+test_that("unzip_shapefile extracts only the shapefile set", {
+    skip_if_not_installed("zip")
+    src <- tempfile("shpsrc")
+    dir.create(src)
+    comps <- file.path(src, c("area.shp", "area.shx", "area.dbf", "area.prj",
+                              "area.cpg", "readme.txt", "other.vrt"))
+    for (f in comps) writeLines("x", f)
+    zip_path <- tempfile(fileext = ".zip")
+    zip::zipr(zip_path, comps)
+    res <- unzip_shapefile(zip_path)
+    on.exit(unlink(c(zip_path, res$dir), recursive = TRUE), add = TRUE)
+    expect_setequal(basename(res$files),
+                    c("area.shp", "area.shx", "area.dbf", "area.prj", "area.cpg"))
+    expect_setequal(list.files(res$dir), basename(res$files))
+})
+
+test_that("unzip_shapefile wants the components of one basename", {
+    skip_if_not_installed("zip")
+    src <- tempfile("shpsrc")
+    dir.create(src)
+    comps <- file.path(src, c("a.shp", "a.shx", "b.dbf", "b.prj"))
+    for (f in comps) writeLines("x", f)
+    zip_path <- tempfile(fileext = ".zip")
+    zip::zipr(zip_path, comps)
+    on.exit(unlink(zip_path), add = TRUE)
+    expect_error(unzip_shapefile(zip_path), "missing required component\\(s\\): .dbf, .prj")
+})
+
+test_that("unpack_kmz stops at the size limit and removes its directory", {
+    skip_if_not_installed("zip")
+    src <- tempfile("kmzsrc")
+    dir.create(src)
+    doc <- file.path(src, "doc.kml")
+    writeLines(c("<kml>", strrep("a", 4096), "</kml>"), doc)
+    kmz_path <- tempfile(fileext = ".kmz")
+    zip::zipr(kmz_path, doc)
+    on.exit(unlink(kmz_path), add = TRUE)
+    exdir <- tempfile("kmz_out")
+    testthat::local_mocked_bindings(.AREA_MAX_UNPACKED_BYTES = 1024)
+    expect_error(unpack_kmz(kmz_path, exdir = exdir), "limit")
+    expect_false(dir.exists(exdir))
+})
+
+test_that("unpack_kmz extracts only the chosen .kml", {
+    skip_if_not_installed("zip")
+    src <- tempfile("kmzsrc")
+    dir.create(src)
+    comps <- file.path(src, c("doc.kml", "icon.png", "big.bin"))
+    for (f in comps) writeLines("<kml/>", f)
+    kmz_path <- tempfile(fileext = ".kmz")
+    zip::zipr(kmz_path, comps)
+    res <- unpack_kmz(kmz_path)
+    on.exit(unlink(c(kmz_path, res$dir), recursive = TRUE), add = TRUE)
+    expect_equal(list.files(res$dir), "doc.kml")
+})
+
+test_that("area_released_dirs gives only the owned dirs that go", {
+    a <- list(name = "a", dir = "/tmp/x_a", owned = TRUE)
+    b <- list(name = "b", dir = "/tmp/x_b", owned = TRUE)
+    k <- list(name = "k", dir = "/tmp/shiny_upload", owned = FALSE)
+    expect_equal(area_released_dirs(list(a, b, k), list(a)), "/tmp/x_b")
+    expect_equal(area_released_dirs(list(a, k), list()), "/tmp/x_a")
+    expect_length(area_released_dirs(list(a), list(a)), 0L)
+})
