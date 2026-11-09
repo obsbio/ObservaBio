@@ -90,32 +90,106 @@ mma_lookup <- function(scientific_names) {
 GBIF_API_BASE <- "https://api.gbif.org/v1"
 GBIF_API_TIMEOUT_S <- 10
 
+# GBIF requests in flight at once, so their network waits overlap (ADR-031).
+# The rate limits below, not this number, set the pace.
+GBIF_MAX_ACTIVE <- 4L
+
+# Requests per second for each kind of GBIF call, measured on 2026-09-18. The
+# species lookups took 20 per second with no 429. The occurrence search has no
+# fixed limit: GBIF lowers it when its servers are busy. At 2 per second, GBIF
+# answered 429 to 36 of 40 searches. Thus the geo step sends few searches
+# (ADR-031), one or two at a time.
+GBIF_SPECIES_RATE <- 20
+GBIF_OCC_RATE <- 2
+GBIF_OCC_MAX_ACTIVE <- 2L
+
+# Tries per request. After a 429, GBIF asks for a pause (Retry-After), and
+# httr2 stops all the requests of the batch for that time.
+GBIF_MAX_TRIES <- 5L
+
 # The feature is opt-in through httr2: absent httr2 disables every call.
 has_httr2 <- function() requireNamespace("httr2", quietly = TRUE)
 
-# GET against the GBIF API; parsed JSON list or NULL on any failure.
-gbif_api_get <- function(segments, query = NULL) {
-    if (!has_httr2()) {
+#' One GET request to the GBIF API
+#'
+#' The throttle is per `realm`, so the light species lookups and the heavy
+#' occurrence searches each keep their own rate. httr2 tries a 429 or a 5xx
+#' again, up to `GBIF_MAX_TRIES` answers. A network failure (timeout, no
+#' answer) is final: the caller does not cache it, so the next run asks again.
+#'
+#' @param segments Path segments after the API base.
+#' @param query Named list of query parameters, or NULL.
+#' @param rate Maximum requests per second in this realm.
+#' @param realm Throttle pool name.
+#' @param timeout Seconds before the request fails.
+#' @return An httr2 request.
+#' @noRd
+gbif_request <- function(segments, query = NULL, rate = GBIF_SPECIES_RATE,
+                         realm = "gbif-species", timeout = GBIF_API_TIMEOUT_S) {
+    req <- httr2::request(GBIF_API_BASE)
+    req <- do.call(httr2::req_url_path_append, c(list(req), as.list(segments)))
+    if (length(query) > 0L) {
+        req <- do.call(httr2::req_url_query, c(list(req), query))
+    }
+    req <- httr2::req_timeout(req, timeout)
+    req <- httr2::req_user_agent(req, "ObservaBio R package")
+    req <- httr2::req_throttle(req, capacity = rate, fill_time_s = 1, realm = realm)
+    # httr2 tries again only a request that failed. Thus a 429 or a 5xx must
+    # stay an HTTP error here, and gbif_perform_parallel() reads its status.
+    # In parallel, httr2 1.2.3 ignores max_tries and tries again with no end,
+    # so this counter stops the retries (LESSONS L-035).
+    answers <- 0L
+    httr2::req_retry(req, max_tries = GBIF_MAX_TRIES, is_transient = function(resp) {
+        answers <<- answers + 1L
+        status <- httr2::resp_status(resp)
+        (status == 429L || status >= 500L) && answers < GBIF_MAX_TRIES
+    })
+}
+
+#' Whether a GBIF answer is worth one more try
+#'
+#' A rate limit (429), a server error (5xx) or a network failure (timeout, no
+#' answer) can pass. Any other status is the final answer.
+#' @noRd
+gbif_is_transient <- function(res) {
+    if (!inherits(res, "httr2_response")) {
+        return(TRUE)
+    }
+    status <- httr2::resp_status(res)
+    status == 429L || status >= 500L
+}
+
+#' Perform GBIF requests in parallel
+#'
+#' Up to `max_active` requests are in flight at once. httr2 tries a transient
+#' failure again ([gbif_request()]). After a 429, httr2 stops all the requests
+#' of the batch for the pause that GBIF asks for. Retry rounds after the batch
+#' did not stop the other requests, and GBIF refused 36 of 40 of them.
+#' A request that still fails stays failed, and the caller reports it as
+#' "could not check", never as "absent" (L-023).
+#'
+#' @param reqs List of requests from [gbif_request()].
+#' @param max_active Requests in flight at once.
+#' @return List the length of `reqs`: an `httr2_response`, or an error
+#'   condition when the request never got an answer.
+#' @noRd
+gbif_perform_parallel <- function(reqs, max_active = GBIF_MAX_ACTIVE) {
+    # Without this, each pause for a 429 writes a progress bar to the server log.
+    old <- options(httr2_progress = FALSE)
+    on.exit(options(old), add = TRUE)
+    res <- httr2::req_perform_parallel(reqs, on_error = "continue",
+                                       progress = FALSE, max_active = max_active)
+    # An HTTP error carries its response. The callers read the status from it.
+    lapply(res, function(r) if (inherits(r, "httr2_http")) r$resp else r)
+}
+
+#' The parsed JSON body of a GBIF answer, or NULL when it is not a 200
+#' @noRd
+gbif_response_body <- function(res) {
+    if (!inherits(res, "httr2_response") || httr2::resp_status(res) != 200L) {
         return(NULL)
     }
-    tryCatch(
-        {
-            req <- httr2::request(GBIF_API_BASE)
-            req <- do.call(httr2::req_url_path_append, c(list(req), as.list(segments)))
-            if (length(query) > 0L) {
-                req <- do.call(httr2::req_url_query, c(list(req), query))
-            }
-            req <- httr2::req_timeout(req, GBIF_API_TIMEOUT_S)
-            req <- httr2::req_user_agent(req, "ObservaBio R package")
-            req <- httr2::req_error(req, is_error = function(resp) FALSE)
-            resp <- httr2::req_perform(req)
-            if (httr2::resp_status(resp) != 200L) {
-                return(NULL)
-            }
-            httr2::resp_body_json(resp)
-        },
-        error = function(e) NULL
-    )
+    tryCatch(httr2::resp_body_json(res), error = function(e) NULL)
 }
 
 # Read a single scalar string field from a parsed GBIF body, or NA.
@@ -134,8 +208,10 @@ gbif_body_field <- function(body, field) {
 #' IUCN Red List category codes for GBIF usage keys
 #'
 #' Reads `GET /species/{key}/iucnRedListCategory` and returns the short `code`
-#' (e.g. "NT", "VU", "EN"). Missing keys, unassessed taxa, absent httr2, offline,
-#' or any API error yield NA. Memoized per session.
+#' (e.g. "NT", "VU", "EN"; "NE" for a taxon the IUCN never assessed). Missing
+#' keys, absent httr2, offline, or any API error yield NA. The requests go out in
+#' parallel ([gbif_perform_parallel()]). Memoized per session, except a failed
+#' request, so the next run asks again.
 #'
 #' @param usage_keys Character/numeric vector of GBIF usage keys (NA allowed).
 #' @return Character vector of IUCN codes (NA where unavailable), same length.
@@ -156,51 +232,88 @@ fetch_gbif_iucn_category <- function(usage_keys) {
         memo <- character(0)
     }
     misses <- setdiff(unique(keys[valid]), names(memo))
-    for (k in misses) {
-        body <- gbif_api_get(c("species", k, "iucnRedListCategory"))
-        memo[[k]] <- gbif_body_field(body, "code")
-    }
     if (length(misses) > 0L) {
+        reqs <- lapply(misses, function(k) gbif_request(c("species", k, "iucnRedListCategory")))
+        res <- tryCatch(gbif_perform_parallel(reqs),
+                        error = function(e) vector("list", length(misses)))
+        for (i in seq_along(misses)) {
+            if (gbif_is_transient(res[[i]])) {
+                next
+            }
+            memo[[misses[[i]]]] <- gbif_body_field(gbif_response_body(res[[i]]), "code")
+        }
         .gbif_iucn_cache$set(memo)
     }
     out[valid] <- unname(memo[keys[valid]])
     out
 }
 
-#' Resolve scientific names to GBIF usage keys (match fallback)
+#' Resolve scientific names to GBIF keys
 #'
-#' For names lacking a GBIF-resolved `taxonID` (e.g. rows a Brazilian provider
-#' matched). Calls the keyless `GET /species/match?name=`. Same degradation and
-#' memoization as [fetch_gbif_iucn_category()].
+#' Calls the keyless `GET /species/match?name=`, in parallel. Memoized per
+#' session, except a failed request, so the next run asks again.
+#'
+#' Two keys per name. `usageKey` is the name itself, for the IUCN route.
+#' `occurrenceKey` is the taxon that holds the GBIF records of the name: GBIF
+#' files the records of a synonym under its accepted taxon, so a search on the
+#' synonym key finds none (ADR-031).
 #'
 #' @param names Character vector of scientific names (NA allowed).
-#' @return Character vector of GBIF usage keys (NA where unmatched), same length.
+#' @return Data frame, one row per name: `usageKey` and `occurrenceKey` (NA
+#'   where GBIF has no match), and `known` (FALSE when the lookup failed).
 #' @noRd
-gbif_match_usage_keys <- function(names) {
-    n <- length(names)
-    if (n == 0L) {
-        return(character(0))
-    }
+gbif_match_keys <- function(names) {
     nm <- as.character(names)
-    out <- rep(NA_character_, n)
+    out <- data.frame(usageKey = rep(NA_character_, length(nm)),
+                      occurrenceKey = rep(NA_character_, length(nm)),
+                      known = rep(FALSE, length(nm)), stringsAsFactors = FALSE)
     valid <- !is.na(nm) & nzchar(trimws(nm))
     if (!any(valid) || !has_httr2()) {
         return(out)
     }
     memo <- .gbif_match_cache$get()
     if (is.null(memo)) {
-        memo <- character(0)
+        memo <- list(usage = character(0), occurrence = character(0))
     }
-    misses <- setdiff(unique(nm[valid]), names(memo))
-    for (q in misses) {
-        body <- gbif_api_get(c("species", "match"), query = list(name = q))
-        memo[[q]] <- gbif_body_field(body, "usageKey")
-    }
+    misses <- setdiff(unique(nm[valid]), names(memo$usage))
     if (length(misses) > 0L) {
+        reqs <- lapply(misses, function(q) {
+            gbif_request(c("species", "match"), query = list(name = q))
+        })
+        res <- tryCatch(gbif_perform_parallel(reqs),
+                        error = function(e) vector("list", length(misses)))
+        for (i in seq_along(misses)) {
+            if (gbif_is_transient(res[[i]])) {
+                next
+            }
+            body <- gbif_response_body(res[[i]])
+            # A HIGHERRANK answer is a parent taxon, not the name (LESSONS L-031).
+            # Its IUCN category and its records are not those of the name.
+            higher <- identical(gbif_body_field(body, "matchType"), "HIGHERRANK")
+            usage <- if (higher) NA_character_ else gbif_body_field(body, "usageKey")
+            accepted <- gbif_body_field(body, "acceptedUsageKey")
+            memo$usage[[misses[[i]]]] <- usage
+            memo$occurrence[[misses[[i]]]] <- if (is.na(usage) || is.na(accepted)) usage else accepted
+        }
         .gbif_match_cache$set(memo)
     }
-    out[valid] <- unname(memo[nm[valid]])
+    hit <- valid & nm %in% names(memo$usage)
+    out$usageKey[hit] <- unname(memo$usage[nm[hit]])
+    out$occurrenceKey[hit] <- unname(memo$occurrence[nm[hit]])
+    out$known[hit] <- TRUE
     out
+}
+
+#' GBIF usage keys for names (the IUCN route of [gbif_match_keys()])
+#'
+#' For names lacking a GBIF-resolved `taxonID` (e.g. rows a Brazilian provider
+#' matched).
+#'
+#' @param names Character vector of scientific names (NA allowed).
+#' @return Character vector of GBIF usage keys (NA where unmatched), same length.
+#' @noRd
+gbif_match_usage_keys <- function(names) {
+    gbif_match_keys(names)$usageKey
 }
 
 #' IUCN category for names, using taxonID when present and matching otherwise
@@ -308,13 +421,17 @@ extract_rredlist_assessment <- function(res) {
 #' For each `genus`/`specific` (+ optional `infra`) triple, calls
 #' `rredlist::rl_species_latest()` once, memoized by the triple **and** the key's
 #' fingerprint. Rows without a genus+species, or every row when the key route is
-#' disabled, get NA.
+#' disabled, get NA. The calls go one at a time with a pause between them: the
+#' IUCN asks for at least 0.5 s, and it can block a key that calls faster.
 #'
 #' @param genus,specific,infra Character vectors, aligned and equal length.
 #' @param key IUCN Red List API key. Defaults to the server secret.
+#' @param pause Seconds between two live calls.
+#' @param sleep Sleep seam for the pause.
 #' @return Data frame with `iucnCategory`, `iucnCriteria`, same length/order.
 #' @noRd
-fetch_iucn_rredlist <- function(genus, specific, infra = NA, key = iucn_key()) {
+fetch_iucn_rredlist <- function(genus, specific, infra = NA, key = iucn_key(),
+                                pause = 0.5, sleep = Sys.sleep) {
     n <- length(genus)
     out <- data.frame(
         iucnCategory = rep(NA_character_, n),
@@ -338,9 +455,14 @@ fetch_iucn_rredlist <- function(genus, specific, infra = NA, key = iucn_key()) {
         memo <- list()
     }
     triples <- paste(iucn_cache_ns(key), g, s, ifelse(is.na(i), "", i), sep = "")
+    live <- 0L
     for (idx in which(valid)) {
         tkey <- triples[[idx]]
         if (is.null(memo[[tkey]])) {
+            if (live > 0L) {
+                sleep(pause)
+            }
+            live <- live + 1L
             res <- tryCatch(
                 rredlist::rl_species_latest(
                     genus = g[[idx]], species = s[[idx]],
@@ -364,10 +486,12 @@ fetch_iucn_rredlist <- function(genus, specific, infra = NA, key = iucn_key()) {
 
 #' Attach MMA + IUCN status columns to a cascade result
 #'
-#' MMA is always resolved offline. For IUCN, the rredlist **key route** is used
-#' when a key is available and rredlist is installed (fills both `iucnCategory`
-#' and `iucnCriteria` from genus/specificEpithet); otherwise it falls back to the
-#' keyless GBIF category (criteria stays NA). All IUCN paths degrade to NA.
+#' MMA is always resolved offline. For IUCN, the keyless GBIF route gives the
+#' category of every species. When a key is available and rredlist is
+#' installed, the rredlist **key route** then fills `iucnCriteria` (and the
+#' IUCN's own category) for the species that can have criteria, see
+#' [iucn_criteria_categories()], plus the MMA-listed ones and the ones GBIF gave
+#' no answer for (ADR-031). All IUCN paths degrade to NA.
 #'
 #' @param df Data frame with at least `scientificName`; `taxonID`,
 #'   `genus`/`specificEpithet`/`infraspecificEpithet` used when present.
@@ -400,25 +524,41 @@ resolve_threat_status <- function(df, include_iucn = TRUE, iucn_key = NULL) {
     prov <- if ("provider" %in% names(df)) as.character(df$provider) else rep(NA_character_, nrow(df))
     tax[is.na(prov) | prov != "gbif"] <- NA_character_
 
+    # The keyless GBIF route answers every species, several at a time.
+    df$iucnCategory <- iucn_category(sci, tax)
+
+    # The key route is slow: two calls per species, 0.5 s apart. It only adds
+    # `criteria`, which only the categories in iucn_criteria_categories() have.
+    # So ask it for those, for every MMA-listed species (a name GBIF cannot place
+    # or keeps outdated), and for a species GBIF gave no answer for (ADR-031).
     key <- iucn_key_for_run(iucn_key)
     if (iucn_key_route_enabled(key)) {
-        genus <- if ("genus" %in% names(df)) df$genus else rep(NA_character_, nrow(df))
-        specific <- if ("specificEpithet" %in% names(df)) df$specificEpithet else rep(NA_character_, nrow(df))
-        infra <- if ("infraspecificEpithet" %in% names(df)) df$infraspecificEpithet else NA
-        iu <- fetch_iucn_rredlist(genus, specific, infra, key = key)
-        df$iucnCategory <- iu$iucnCategory
-        df$iucnCriteria <- iu$iucnCriteria
-
-        # The key route is keyed on genus+specificEpithet and can miss per
-        # species (name absent from the Red List, API hiccup). Never let that
-        # erase a category the keyless GBIF route can still supply: only
-        # `criteria` is exclusive to the key route.
-        gap <- !is_non_empty(df$iucnCategory)
-        if (any(gap)) {
-            df$iucnCategory[gap] <- iucn_category(sci[gap], tax[gap])
+        ask <- which(df$iucnCategory %in% iucn_criteria_categories() |
+                         is_non_empty(df$statusMMA) | !is_non_empty(df$iucnCategory))
+        if (length(ask) > 0L) {
+            col_or_na <- function(name) {
+                if (!name %in% names(df)) {
+                    return(rep(NA_character_, nrow(df)))
+                }
+                as.character(df[[name]])
+            }
+            iu <- fetch_iucn_rredlist(col_or_na("genus")[ask],
+                                      col_or_na("specificEpithet")[ask],
+                                      col_or_na("infraspecificEpithet")[ask], key = key)
+            # The IUCN itself wins over the copy that GBIF keeps. A key-route miss
+            # (name absent from the Red List, API failure) keeps the GBIF category.
+            got <- is_non_empty(iu$iucnCategory)
+            df$iucnCategory[ask[got]] <- iu$iucnCategory[got]
+            df$iucnCriteria[ask] <- iu$iucnCriteria
         }
-    } else {
-        df$iucnCategory <- iucn_category(sci, tax)
     }
     df
+}
+
+#' IUCN categories whose assessment carries criteria
+#'
+#' LC, DD and NE have no criteria, so the key route has nothing to add for them.
+#' @noRd
+iucn_criteria_categories <- function() {
+    c("CR", "EN", "VU", "NT", "LR/nt", "LR/cd")
 }

@@ -43,8 +43,9 @@ format_scientific_tokens <- function(tokens, rank_tokens) {
 #' Normalize a scientific name to canonical form
 #'
 #' Removes author strings like `(Linnaeus, 1771)`, handles qualifiers
-#' (`cf./aff./sp./spp.`; `Genus sp.` -> NA), and applies canonical capitalization.
-#' The single shared normalizer for every provider (LESSONS L-006).
+#' (`cf./aff./sp./spp.`; `Genus sp.` -> `Genus`), and applies canonical
+#' capitalization. The single shared normalizer for every provider
+#' (LESSONS L-006).
 #'
 #' @param name Character scalar (or coercible) name.
 #' @param remove_authors Drop author strings/connectors/years. Default TRUE.
@@ -107,6 +108,10 @@ normalize_scientific_name <- function(name, remove_authors = TRUE, ignore_qualif
                 keep[[idx]] <- FALSE
             } else if (grepl("^[0-9]{4}$", token)) {
                 keep[[idx]] <- FALSE
+            } else if (grepl("['\u2019]", token)) {
+                # No epithet has an apostrophe, so `d'Orbigny` is an author. Kept,
+                # it made GBIF read a subspecies and answer HIGHERRANK.
+                keep[[idx]] <- FALSE
             } else if (grepl("^[A-Z]", token)) {
                 keep[[idx]] <- FALSE
             } else {
@@ -127,11 +132,10 @@ normalize_scientific_name <- function(name, remove_authors = TRUE, ignore_qualif
     }
 
     if (ignore_qualifiers) {
-        had_sp_marker <- any(tolower(tokens) %in% c("sp", "sp.", "spp", "spp."))
+        # `Oecomys sp.` is identified to genus, so it is queried as `Oecomys`.
+        # The qualifier stays visible: the audit keeps the original name and
+        # flags it for review (ADR-015).
         tokens <- tokens[!(tolower(tokens) %in% qualifier_tokens)]
-        if (length(tokens) == 1L && had_sp_marker) {
-            return(NA_character_)
-        }
     }
 
     tokens <- tokens[nzchar(tokens)]
@@ -214,17 +218,29 @@ format_epithet_token <- function(token) {
     cleaned
 }
 
-#' Derive `genus` / `specificEpithet` / `taxonRank` from a scientific name
+#' Infraspecific rank markers and the rank each one names
+#' @noRd
+infraspecific_rank_markers <- function() {
+    c("subsp" = "subspecies", "subsp." = "subspecies",
+      "ssp" = "subspecies", "ssp." = "subspecies",
+      "var" = "variety", "var." = "variety",
+      "f" = "form", "f." = "form", "forma" = "form")
+}
+
+#' Derive the name parts and `taxonRank` from a scientific name
 #'
 #' The BR bases answer with a match verdict (`check_names()` returns the accepted
 #' name + family, no parsed parts), so these columns must come from the name
 #' itself. Ported from Saira's `extract_scientific_name_components()`.
 #' `Genus sp.` -> genus rank, no epithet; `Genus cf. species` -> the epithet after
-#' the qualifier, species rank. Parses the unique names and expands back by
-#' `match()` (LESSONS: unique -> resolve -> match back).
+#' the qualifier, species rank. A third epithet is infraspecific: its rank comes
+#' from the marker before it (`subsp.`, `var.`, `f.`), else it is a zoological
+#' subspecies (`Canis lupus familiaris`). Parses the unique names and expands
+#' back by `match()` (LESSONS: unique -> resolve -> match back).
 #'
 #' @param scientific_names Character vector of scientific names.
-#' @return Data frame with `genus`, `specificEpithet`, `taxonRank`.
+#' @return Data frame with `genus`, `specificEpithet`, `infraspecificEpithet`,
+#'   `taxonRank`.
 #' @noRd
 scientific_name_components <- function(scientific_names) {
     sn <- as.character(scientific_names)
@@ -239,8 +255,9 @@ scientific_name_components <- function(scientific_names) {
 
     placeholders <- name_placeholder_tokens()
     uncertain <- name_uncertainty_tokens()
+    markers <- infraspecific_rank_markers()
     none <- list(genus = NA_character_, specificEpithet = NA_character_,
-                 taxonRank = NA_character_)
+                 infraspecificEpithet = NA_character_, taxonRank = NA_character_)
 
     parsed <- lapply(sn, function(value) {
         if (is_blank_value(value)) {
@@ -258,7 +275,7 @@ scientific_name_components <- function(scientific_names) {
             return(none)
         }
         at_genus <- list(genus = genus, specificEpithet = NA_character_,
-                         taxonRank = "genus")
+                         infraspecificEpithet = NA_character_, taxonRank = "genus")
         if (length(tokens) == 1L) {
             return(at_genus)
         }
@@ -267,24 +284,44 @@ scientific_name_components <- function(scientific_names) {
         if (second %in% placeholders) {
             return(at_genus)
         }
-        epithet <- if (second %in% uncertain) {
-            # `Genus cf. species` -> the epithet sits after the qualifier.
-            if (length(tokens) < 3L) return(at_genus)
-            format_epithet_token(tokens[[3]])
-        } else {
-            format_epithet_token(tokens[[2]])
+        # `Genus cf. species` and the hybrid `Mentha x piperita` -> the epithet
+        # sits after the marker.
+        at <- if (second %in% c(uncertain, "x", "\u00d7")) 3L else 2L
+        if (length(tokens) < at) {
+            return(at_genus)
         }
+        epithet <- format_epithet_token(tokens[[at]])
         if (is.na(epithet)) {
             return(at_genus)
         }
-        list(genus = genus, specificEpithet = epithet, taxonRank = "species")
+        at_species <- list(genus = genus, specificEpithet = epithet,
+                           infraspecificEpithet = NA_character_, taxonRank = "species")
+
+        rest <- tokens[-seq_len(at)]
+        marker <- if (length(rest) > 0L) tolower(rest[[1]]) else NA_character_
+        infra <- if (length(rest) == 0L) {
+            NA_character_
+        } else if (marker %in% names(markers)) {
+            if (length(rest) < 2L) NA_character_ else format_epithet_token(rest[[2]])
+        } else {
+            format_epithet_token(rest[[1]])
+        }
+        if (is.na(infra)) {
+            return(at_species)
+        }
+        rank <- if (marker %in% names(markers)) markers[[marker]] else "subspecies"
+        list(genus = genus, specificEpithet = epithet,
+             infraspecificEpithet = infra, taxonRank = rank)
     })
 
+    part <- function(field) {
+        vapply(parsed, function(x) x[[field]], FUN.VALUE = character(1))
+    }
     data.frame(
-        genus = vapply(parsed, function(x) x$genus, FUN.VALUE = character(1)),
-        specificEpithet = vapply(parsed, function(x) x$specificEpithet,
-                                 FUN.VALUE = character(1)),
-        taxonRank = vapply(parsed, function(x) x$taxonRank, FUN.VALUE = character(1)),
+        genus = part("genus"),
+        specificEpithet = part("specificEpithet"),
+        infraspecificEpithet = part("infraspecificEpithet"),
+        taxonRank = part("taxonRank"),
         stringsAsFactors = FALSE
     )
 }
@@ -516,8 +553,8 @@ run_cascade <- function(query_names, providers = get_providers()) {
     }
 
     # Pass 2, expensive: the fuzzy fallback, reached only by names nothing cheaper
-    # resolved. A base outside its exact index can only answer `ambiguous` (its
-    # `Correct` verdict *is* the index), and `ambiguous` never outranks the
+    # resolved. A base outside its exact index can only answer `ambiguous` or
+    # `not_found` (its `Correct` verdict *is* the index), and neither outranks the
     # `accepted`/`synonym` pass 1 already has — so deferring cannot change a
     # result, only skip work. See ADR-023.
     for (i in seq_along(providers)) {

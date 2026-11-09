@@ -192,7 +192,8 @@ count_name_tokens <- function(x) {
 #' per input by smallest `Distance` and, on a tie, preferring the accepted row
 #' over a synonym one. Any canonical taxonomy columns present in
 #' the raw output (kingdom..genus, taxonID, taxonRank, vernacularName) pass
-#' through. The schema is finalized by `normalize_provider_result()`.
+#' through, except on a refused suggestion (another taxon, so `not_found`).
+#' The schema is finalized by `normalize_provider_result()`.
 #'
 #' @param raw_df Raw check result.
 #' @param provider_id Provider id.
@@ -229,23 +230,42 @@ br_join_base_taxonomy <- function(out, data, default_kingdom = NA_character_,
     } else {
         br_species_key(provider_id, data)
     }
-    idx <- match(normalize_for_matching(out$scientificName), base_key)
+    # match() returns the first row with the key, and Fauna do Brasil files each
+    # subspecies under its binomial (`Iguana iguana iguana` has `species` =
+    # `Iguana iguana`). When that row came first, the species got the subspecies
+    # id and rank, and lost its vernacular name. So put the species-rank,
+    # non-synonym row of each key first.
+    base_chr <- function(name) {
+        if (!name %in% names(data)) {
+            return(rep(NA_character_, nrow(data)))
+        }
+        as.character(data[[name]])
+    }
+    ord <- order(!(tolower(base_chr("taxonRank")) %in% "species"),
+                 grepl("synonym", tolower(base_chr("taxonomicStatus")), fixed = TRUE))
+    idx <- ord[match(normalize_for_matching(out$scientificName), base_key[ord])]
 
     # base column -> canonical column
     from_base <- c(taxonID = "id", kingdom = "kingdom", phylum = "phylum",
                    class = "class", order = "order", family = "family",
                    genus = "genus", taxonRank = "taxonRank",
                    vernacularName = "vernacularName")
-    for (canonical in names(from_base)) {
-        src <- from_base[[canonical]]
-        if (!src %in% names(data)) {
+    values <- lapply(from_base, function(src) {
+        if (src %in% names(data)) as.character(data[[src]])[idx] else NULL
+    })
+    # Taxon attributes the base carries in its own vocabulary (ADR-029).
+    values$scientificNameAuthorship <- br_authorship(base_chr("scientificName")[idx],
+                                                     base_chr("species")[idx])
+    values$establishmentMeans <- br_establishment_means(base_chr("origin")[idx])
+    values$taxonRemarks <- br_endemism_remark(base_chr("endemism")[idx])
+    for (canonical in names(values)) {
+        if (is.null(values[[canonical]])) {
             next
         }
         if (!canonical %in% names(out)) {
             out[[canonical]] <- NA_character_
         }
-        out[[canonical]] <- fill_blank_values(out[[canonical]],
-                                              as.character(data[[src]])[idx])
+        out[[canonical]] <- fill_blank_values(out[[canonical]], values[[canonical]])
     }
 
     # faunabr ships no `kingdom` column — it is fauna by construction.
@@ -259,6 +279,56 @@ br_join_base_taxonomy <- function(out, data, default_kingdom = NA_character_,
         out$kingdom <- fill_blank_values(out$kingdom, fallback)
     }
     out
+}
+
+#' Authorship of a base row: its `scientificName` without the `species` part
+#'
+#' Both BR bases write the author after the name (`Annona crassiflora Mart.`,
+#' `Iguana iguana (Linnaeus, 1758)`). A row whose name does not start with its
+#' `species` value (a flora autonym such as `Cissus erosa Rich. subsp. erosa`)
+#' gets NA.
+#'
+#' @param scientific_name,species Character vectors of the same length.
+#' @return Character vector of authorship strings, NA where there is none.
+#' @noRd
+br_authorship <- function(scientific_name, species) {
+    sn <- as.character(scientific_name)
+    sp <- as.character(species)
+    ok <- !is.na(sn) & !is.na(sp) & startsWith(sn, paste0(sp, " "))
+    out <- rep(NA_character_, length(sn))
+    out[ok] <- trimws(substring(sn[ok], nchar(sp[ok]) + 2L))
+    out[!is_non_empty(out)] <- NA_character_
+    out
+}
+
+#' DwC `establishmentMeans` from the `origin` of a BR base
+#'
+#' Flora do Brasil writes Native/Naturalized/Cultivated and Fauna do Brasil
+#' writes native/introduced/uncertain. A naturalized or cultivated plant came to
+#' Brazil through people, which DwC calls "introduced". An unknown origin stays
+#' NA.
+#'
+#' @param origin Character vector of base `origin` values.
+#' @return Character vector of DwC `establishmentMeans` values.
+#' @noRd
+br_establishment_means <- function(origin) {
+    dwc <- c(native = "native", naturalized = "introduced",
+             cultivated = "introduced", introduced = "introduced",
+             uncertain = "uncertain")
+    unname(dwc[tolower(as.character(origin))])
+}
+
+#' `taxonRemarks` from the Flora do Brasil `endemism`
+#'
+#' Writes the `endemism=<value>` form that the client's reference sheets use.
+#' An unknown endemism stays NA.
+#'
+#' @param endemism Character vector of base `endemism` values.
+#' @return Character vector of `taxonRemarks` values.
+#' @noRd
+br_endemism_remark <- function(endemism) {
+    e <- as.character(endemism)
+    ifelse(e %in% c("Endemic", "Non-endemic"), paste0("endemism=", e), NA_character_)
 }
 
 br_map_check_result <- function(raw_df, provider_id, data = NULL,
@@ -302,6 +372,9 @@ br_map_check_result <- function(raw_df, provider_id, data = NULL,
     query_name <- col("input_name")
     spelling <- col("Spelling")
     tax_status <- tolower(col("taxonomicStatus"))
+    # Fauna do Brasil writes "valid" where Darwin Core and Flora do Brasil write
+    # "accepted".
+    tax_status[tax_status %in% "valid"] <- "accepted"
 
     validation_status <- vapply(seq_len(n), function(i) {
         sp <- spelling[[i]]
@@ -329,6 +402,11 @@ br_map_check_result <- function(raw_df, provider_id, data = NULL,
     usable <- !is.na(suggested) & nzchar(suggested) &
         count_name_tokens(suggested) == count_name_tokens(query_name)
     scientific_name <- ifelse(usable, suggested, query_name)
+    # The rest of a refused verdict row (status, family) describes the refused
+    # taxon, not the input. Kept, it gave `Psidium` (a plant) the clam family
+    # Sphaeriidae. The base has no answer for the input, so say not_found.
+    validation_status[!usable] <- "not_found"
+    tax_status[!usable] <- NA_character_
 
     out <- data.frame(
         query_name = query_name,
@@ -342,7 +420,9 @@ br_map_check_result <- function(raw_df, provider_id, data = NULL,
                     "phylum", "class", "order", "family", "genus",
                     "specificEpithet", "infraspecificEpithet", "vernacularName")) {
         if (extra %in% names(raw_df)) {
-            out[[extra]] <- as.character(raw_df[[extra]])
+            vals <- as.character(raw_df[[extra]])
+            vals[!usable] <- NA_character_
+            out[[extra]] <- vals
         }
     }
 

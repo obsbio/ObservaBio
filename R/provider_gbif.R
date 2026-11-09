@@ -97,8 +97,35 @@ gbif_map_backbone <- function(raw, queried) {
         order = col("order"),
         family = col("family"),
         genus = col("genus"),
+        scientificNameAuthorship = col("authorship"),
         stringsAsFactors = FALSE
     )
+
+    # For a synonym, GBIF gives the classification of the accepted taxon, so its
+    # `genus` disagrees with the name (`Achatina fulica` in Lissachatina). The
+    # contract derives the genus from the name instead.
+    out$genus[grepl("SYNONYM", toupper(status), fixed = TRUE)] <- NA_character_
+
+    # HIGHERRANK: GBIF did not find the name and gives a parent taxon instead
+    # (`Hydropsalis albicollis` -> the genus, `Swartzia` -> Plantae). The parent
+    # is not the name, so keep the input and call it not_found. Only an accepted
+    # parent keeps its classification: a synonym parent can be a different
+    # animal (`Platyrhincus` is a sea lion genus, not the flycatcher).
+    higher <- toupper(match_type) %in% "HIGHERRANK" &
+        normalize_for_matching(scientific) != normalize_for_matching(query_name)
+    higher[is.na(higher)] <- FALSE
+    if (any(higher)) {
+        out$validation_status[higher] <- "not_found"
+        out$scientificName[higher] <- query_name[higher]
+        for (name in c("taxonomicStatus", "taxonID", "acceptedNameUsageID",
+                       "taxonRank", "genus", "scientificNameAuthorship")) {
+            out[[name]][higher] <- NA_character_
+        }
+        other_parent <- higher & !(toupper(status) %in% "ACCEPTED")
+        for (name in c("kingdom", "phylum", "class", "order", "family")) {
+            out[[name]][other_parent] <- NA_character_
+        }
+    }
     normalize_provider_result(out, "gbif")
 }
 

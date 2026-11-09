@@ -6,8 +6,7 @@
 skip_if_not_installed("sf")
 
 reset_occ_cache <- function() {
-    .gbif_occ_cache$wkt <- NULL
-    .gbif_occ_cache$by_name <- NULL
+    .gbif_occ_cache$stores <- NULL
 }
 
 # A covering square over the SP-ish test area, as one labelled layer.
@@ -369,7 +368,9 @@ test_that("build_dwc_output joins the flag per (species, area)", {
     expect_true(is.na(out$distributionFlag[[3L]]))
 })
 
-test_that("audit_attach_geo keeps one row per name and spells out the areas", {
+test_that("audit_attach_geo gives one row per name and area", {
+    # A name found in two areas used to come out as one row with the areas
+    # joined ("RPPN; Trijuncao"). Each area is its own row now (ADR-030).
     reset_occ_cache()
     name_map <- data.frame(
         area = c("RPPN", "Trijuncao"),
@@ -381,13 +382,18 @@ test_that("audit_attach_geo keeps one row per name and spells out the areas", {
         sample_two_areas(), name_map, providers = list(fake_dist_provider()),
         uf_biomes = sample_uf_biomes(), fetch = fetch_near_first_area
     )
-    audit <- data.frame(queryName = "aaa bbb", stringsAsFactors = FALSE)
+    audit <- data.frame(queryName = c("aaa bbb", "zzz yyy"),
+                        validator = c("florabr", "gbif"), stringsAsFactors = FALSE)
     out <- audit_attach_geo(audit, geo)
+    lv <- distribution_flag_levels()
 
-    expect_equal(nrow(out), 1L)
-    expect_equal(out$areaName, "RPPN; Trijuncao")
-    expect_match(out$distributionFlag, "^RPPN: .+; Trijuncao: ")
-    expect_equal(out$gbifRecords, 1L)          # summed across the two areas
+    expect_equal(out$queryName, c("aaa bbb", "aaa bbb", "zzz yyy"))
+    expect_equal(out$validator, c("florabr", "florabr", "gbif"))
+    expect_equal(out$areaName, c("RPPN", "Trijuncao", NA))
+    expect_equal(out$distributionFlag, c(lv[["confirmed"]], lv[["near_absent"]], NA))
+    expect_equal(out$gbifRecords, c(1L, 0L, NA))
+    # A name that no area verified keeps one row, with empty geo columns.
+    expect_true(is.na(out$areaStates[[3L]]))
 })
 
 test_that("providers_distribution unions tokens and ignores providers without the slot", {

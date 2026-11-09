@@ -1,7 +1,7 @@
 # GBIF occurrences inside the buffer (SPEC §8 step 3, week 6). Every test is
-# offline: the network primitive gbif_occ_query_page() is never reached — the
-# pure layers (WKT simplification, parsing, in-buffer refine, degradation) are
-# exercised through the `fetch`/`query` seams and stubbed rgbif responses.
+# offline: the pure layers (WKT simplification, parsing, in-buffer refine,
+# degradation) are exercised through the `fetch` seam, and the live grouped
+# path through a GBIF mocked with httr2.
 
 skip_if_not_installed("sf")
 
@@ -12,8 +12,8 @@ sample_buffer <- function(cx = -47.9, cy = -15.8, dist_m = 10000) {
 }
 
 reset_occ_cache <- function() {
-    .gbif_occ_cache$wkt <- NULL
-    .gbif_occ_cache$by_name <- NULL
+    .gbif_occ_cache$stores <- NULL
+    .gbif_match_cache$reset()
 }
 
 # ---- gbif_occ_wkt -----------------------------------------------------------
@@ -118,81 +118,155 @@ test_that("gbif_occ_parse drops rows missing coordinates and handles empties", {
     expect_equal(nrow(gbif_occ_parse(list(data = "no data found"))), 0L)
 })
 
-# ---- gbif_occ_fetch_species: degradation ------------------------------------
+# ---- gbif_occ_plan ------------------------------------------------------------
 
-test_that("gbif_occ_fetch_species degrades to empty + warning on a query error", {
-    failing <- function(name, wkt, start, limit) stop("network down")
-    expect_warning(
-        pts <- gbif_occ_fetch_species("Any species", "POLYGON((0 0,1 0,1 1,0 1,0 0))",
-                                      query = failing),
-        "failed"
+test_that("gbif_occ_plan gives a big taxon its own search and packs the others", {
+    plan <- gbif_occ_plan(c("1" = 250L, "2" = 30L, "3" = 20L, "4" = 500L),
+                          limit = 300L, max_keys = 10L)
+    expect_equal(plan, list("4", c("1", "2", "3")))
+})
+
+test_that("gbif_occ_plan holds each shared search under the page and the URL budget", {
+    set.seed(3)
+    counts <- stats::setNames(sample(1:300, 60, replace = TRUE), as.character(1:60))
+    plan <- gbif_occ_plan(counts, limit = 300L, max_keys = 7L)
+    expect_setequal(unlist(plan), names(counts))    # every taxon, once
+    expect_equal(length(unlist(plan)), length(counts))
+    expect_true(all(vapply(plan, function(g) sum(counts[g]) <= 300L, logical(1))))
+    expect_true(all(lengths(plan) <= 7L))
+})
+
+# ---- gbif_occ_fetch_grouped: the live path, over a mocked GBIF ----------------
+
+square_wkt <- "POLYGON((0 0,1 0,1 1,0 1,0 0))"
+no_sleep <- function(s) invisible()
+
+occ_record <- function(key, taxon, lon = -47.9, lat = -15.8, genus = "90") {
+    list(key = key, scientificName = "Aus bus", decimalLongitude = lon,
+         decimalLatitude = lat, datasetKey = "ds-1", taxonKey = taxon,
+         acceptedTaxonKey = taxon, speciesKey = taxon, genusKey = genus)
+}
+
+# A fake GBIF. `taxa` maps a name to its species/match answer. `pool` holds all
+# the occurrence records: the facet search counts them per taxon key, and a
+# search on keys returns the records that carry one of them. The returned
+# environment logs the query of each occurrence search.
+fake_gbif <- function(taxa, pool, env = parent.frame()) {
+    log <- new.env()
+    log$searches <- list()
+    keys_of <- function(r) unique(as.character(unlist(r[.GBIF_OCC_TAXON_FIELDS])))
+    httr2::local_mocked_responses(function(req) {
+        q <- httr2::url_parse(req$url)$query
+        if (grepl("/species/match", req$url, fixed = TRUE)) {
+            return(httr2::response_json(body = taxa[[q$name]] %||% list(matchType = "NONE")))
+        }
+        log$searches[[length(log$searches) + 1L]] <- q
+        if (identical(q$facet, "taxonKey")) {
+            tab <- table(unlist(lapply(pool, keys_of)))
+            counts <- lapply(names(tab), function(k) list(name = k, count = as.integer(tab[[k]])))
+            return(httr2::response_json(body = list(
+                count = length(pool), results = list(),
+                facets = list(list(field = "TAXON_KEY", counts = counts))
+            )))
+        }
+        want <- unlist(q[names(q) == "taxonKey"])
+        hit <- Filter(function(r) any(keys_of(r) %in% want), pool)
+        limit <- as.integer(q$limit)
+        httr2::response_json(body = list(offset = 0L, limit = limit,
+                                         endOfRecords = length(hit) <= limit,
+                                         count = length(hit), results = utils::head(hit, limit)))
+    }, env = env)
+    log
+}
+
+exact <- function(key) list(usageKey = key, matchType = "EXACT", status = "ACCEPTED")
+
+test_that("gbif_occ_fetch_grouped sends one facet search and groups the taxa with records", {
+    reset_occ_cache()
+    log <- fake_gbif(
+        taxa = list("Aus bus" = exact(1L), "Cus dus" = exact(2L), "Eus fus" = exact(3L)),
+        pool = list(occ_record(11, "1"), occ_record(12, "1", lon = -47.8), occ_record(21, "2"))
     )
-    expect_equal(nrow(pts), 0L)
+    out <- gbif_occ_fetch_grouped(c("Aus bus", "Cus dus", "Eus fus", "Nomen nudum"),
+                                  rep(square_wkt, 4L))
+    expect_equal(out[[1L]]$key, c("11", "12"))
+    expect_equal(out[[2L]]$key, "21")
+    # No records and no GBIF name are real answers ("absent"), not failures.
+    expect_equal(nrow(out[[3L]]), 0L)
+    expect_false(isTRUE(attr(out[[3L]], "gbif_error")))
+    expect_equal(nrow(out[[4L]]), 0L)
+    expect_false(isTRUE(attr(out[[4L]], "gbif_error")))
+    # One facet search, then one search for the two taxa with records.
+    expect_length(log$searches, 2L)
+    expect_equal(log$searches[[1L]]$facet, "taxonKey")
+    expect_setequal(unlist(log$searches[[2L]][names(log$searches[[2L]]) == "taxonKey"]),
+                    c("1", "2"))
 })
 
-test_that("gbif_occ_fetch_species returns empty for an NA WKT without querying", {
-    boom <- function(...) stop("should not be called")
-    expect_equal(nrow(gbif_occ_fetch_species("X", NA_character_, query = boom)), 0L)
-})
-
-test_that("gbif_occ_fetch_species paginates until a short page", {
-    calls <- 0L
-    query <- function(name, wkt, start, limit) {
-        calls <<- calls + 1L
-        # First page full (2 rows), second page short (1 row) -> stop.
-        rows <- if (start == 0L) 2L else 1L
-        list(data = data.frame(
-            scientificName = rep(name, rows),
-            decimalLongitude = rep(-47.9, rows),
-            decimalLatitude = rep(-15.8, rows),
-            datasetKey = rep("ds", rows),
-            stringsAsFactors = FALSE
-        ))
-    }
-    pts <- gbif_occ_fetch_species("Sp", "POLYGON((0 0,1 0,1 1,0 1,0 0))",
-                                  max_records = 100L, page_size = 2L, query = query)
-    expect_equal(nrow(pts), 3L)
-    expect_equal(calls, 2L)
-})
-
-test_that("gbif_occ_fetch_species retries a transient rate-limit error, then succeeds", {
-    attempts <- 0L
-    flaky <- function(name, wkt, start, limit) {
-        attempts <<- attempts + 1L
-        if (attempts < 3L) stop("Too many requests! ... please use occ_download()")
-        list(data = data.frame(
-            scientificName = name, decimalLongitude = -47.9, decimalLatitude = -15.8,
-            datasetKey = "ds", stringsAsFactors = FALSE
-        ))
-    }
-    pts <- gbif_occ_fetch_species("Sp", "POLYGON((0 0,1 0,1 1,0 1,0 0))",
-                                  query = flaky, sleep = function(s) invisible())
-    expect_equal(attempts, 3L)          # two transient failures + one success
-    expect_equal(nrow(pts), 1L)
-    expect_false(isTRUE(attr(pts, "gbif_error")))
-})
-
-test_that("gbif_occ_fetch_species does not retry a non-transient error and flags it", {
-    calls <- 0L
-    failing <- function(name, wkt, start, limit) {
-        calls <<- calls + 1L
-        stop("bad request: invalid geometry")
-    }
-    expect_warning(
-        pts <- gbif_occ_fetch_species("Sp", "POLYGON((0 0,1 0,1 1,0 1,0 0))",
-                                      query = failing, sleep = function(s) invisible()),
-        "failed"
+test_that("gbif_occ_fetch_grouped gives a synonym the records of its accepted taxon", {
+    reset_occ_cache()
+    fake_gbif(
+        taxa = list("Amazilia fimbriata" = list(usageKey = 2476422L, acceptedUsageKey = 10941997L,
+                                                matchType = "EXACT", status = "SYNONYM")),
+        pool = list(occ_record(1, "10941997"))
     )
-    expect_equal(calls, 1L)             # no retry on a non-transient error
-    expect_equal(nrow(pts), 0L)
-    expect_true(isTRUE(attr(pts, "gbif_error")))
+    out <- gbif_occ_fetch_grouped("Amazilia fimbriata", square_wkt)
+    expect_equal(out[[1L]]$key, "1")
 })
 
-test_that("gbif_occ_fetch_species tags a genuine empty result as not-failed", {
-    query <- function(name, wkt, start, limit) list(data = "no data found")
-    pts <- gbif_occ_fetch_species("Sp", "POLYGON((0 0,1 0,1 1,0 1,0 0))", query = query)
-    expect_equal(nrow(pts), 0L)
-    expect_false(isTRUE(attr(pts, "gbif_error")))
+test_that("gbif_occ_fetch_grouped splits the records of a shared search by taxon", {
+    # A genus and one of its species share a search: the genus gets both
+    # records, the species only its own.
+    reset_occ_cache()
+    fake_gbif(
+        taxa = list("Aus bus" = exact(1L), "Aus" = exact(90L)),
+        pool = list(occ_record(11, "1"), occ_record(21, "2"))
+    )
+    out <- gbif_occ_fetch_grouped(c("Aus bus", "Aus"), rep(square_wkt, 2L))
+    expect_equal(out[[1L]]$key, "11")
+    expect_setequal(out[[2L]]$key, c("11", "21"))
+})
+
+test_that("gbif_occ_fetch_grouped fails the species of a failed facet search", {
+    reset_occ_cache()
+    httr2::local_mocked_responses(function(req) {
+        if (grepl("/species/match", req$url, fixed = TRUE)) {
+            return(httr2::response_json(body = exact(1L)))
+        }
+        httr2::response(status_code = 503L, headers = list("Retry-After" = "0"))
+    })
+    out <- gbif_occ_fetch_grouped("Aus bus", square_wkt)
+    expect_true(isTRUE(attr(out[[1L]], "gbif_error")))
+})
+
+test_that("gbif_occ_fetch_grouped fails a shared search whose page misses records", {
+    # The facet counts say one page holds both taxa, but the answer has more
+    # records than the page: some records are lost.
+    reset_occ_cache()
+    httr2::local_mocked_responses(function(req) {
+        q <- httr2::url_parse(req$url)$query
+        if (grepl("/species/match", req$url, fixed = TRUE)) {
+            return(httr2::response_json(body = exact(if (q$name == "Aus bus") 1L else 2L)))
+        }
+        if (identical(q$facet, "taxonKey")) {
+            return(httr2::response_json(body = list(facets = list(list(counts = list(
+                list(name = "1", count = 1L), list(name = "2", count = 1L)
+            ))))))
+        }
+        httr2::response_json(body = list(endOfRecords = FALSE, count = 400L,
+                                         results = list(occ_record(11, "1"))))
+    })
+    out <- gbif_occ_fetch_grouped(c("Aus bus", "Cus dus"), rep(square_wkt, 2L))
+    expect_true(all(vapply(out, function(p) isTRUE(attr(p, "gbif_error")), logical(1))))
+})
+
+test_that("gbif_occ_fetch_grouped fails a species whose GBIF lookup failed", {
+    reset_occ_cache()
+    httr2::local_mocked_responses(function(req) {
+        httr2::response(status_code = 503L, headers = list("Retry-After" = "0"))
+    })
+    out <- gbif_occ_fetch_grouped("Aus bus", square_wkt)
+    expect_true(isTRUE(attr(out[[1L]], "gbif_error")))
 })
 
 # ---- gbif_occ_query_blocks --------------------------------------------------
@@ -281,6 +355,37 @@ test_that("gbif_occ_in_buffer memoizes per species for a fixed buffer", {
     gbif_occ_in_buffer(c("Sp one", "Sp one"), buf, fetch = stub_fetch)
     gbif_occ_in_buffer("Sp one", buf, fetch = stub_fetch)
     expect_equal(calls, 1L)
+})
+
+test_that("gbif_occ_in_buffer keeps one cache per area", {
+    # One shared cache was reset by each new area, so a second run searched
+    # every area but the last one again.
+    reset_occ_cache()
+    calls <- 0L
+    stub_fetch <- function(name, wkt, max_records, page_size) {
+        calls <<- calls + 1L
+        gbif_occ_parse(NULL)
+    }
+    area_a <- sample_buffer(-47.9, -15.8)
+    area_b <- sample_buffer(-45.0, -12.0)
+    for (buf in list(area_a, area_b, area_a, area_b)) {
+        gbif_occ_in_buffer("Sp one", buf, fetch = stub_fetch, sleep = no_sleep)
+    }
+    expect_equal(calls, 2L)             # the second pass asks GBIF nothing
+})
+
+test_that("gbif_occ_in_buffer sends the live grouped searches by default", {
+    reset_occ_cache()
+    # Per species, one point near the buffer centre and one about 1 degree away.
+    fake_gbif(
+        taxa = list("Sp one" = exact(1L), "Sp two" = exact(2L)),
+        pool = list(occ_record(11, "1", -47.90, -15.80), occ_record(12, "1", -46.50, -15.80),
+                    occ_record(21, "2", -47.90, -15.80), occ_record(22, "2", -46.50, -15.80))
+    )
+    out <- gbif_occ_in_buffer(c("Sp one", "Sp two"), sample_buffer(), sleep = no_sleep)
+    expect_equal(sort(unique(out$species)), c("Sp one", "Sp two"))
+    expect_true(all(out$decimalLongitude == -47.90))   # refined to the buffer
+    expect_length(attr(out, "failed"), 0L)
 })
 
 test_that("gbif_occ_in_buffer records failed species and does not cache them", {

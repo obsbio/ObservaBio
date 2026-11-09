@@ -71,6 +71,58 @@ test_that("br_join_base_taxonomy never overwrites a value the verdict supplied",
     expect_equal(got$kingdom, "Plantae")   # blanks still filled
 })
 
+test_that("br_join_base_taxonomy takes the species row, not a subspecies filed under it", {
+    # Fauna do Brasil files `Iguana iguana iguana` under species "Iguana iguana".
+    # When that row came first, the species got its id, rank and no vernacular.
+    base <- data.frame(
+        species = c("Iguana iguana", "Iguana iguana", "Iguana iguana"),
+        scientificName = c("Iguana iguana iguana (Linnaeus, 1758)",
+                           "Iguana iguana (Linnaeus, 1758)",
+                           "Iguana iguana Laurenti, 1768"),
+        id = c("92130", "66168", "1"),
+        taxonRank = c("subspecies", "species", "species"),
+        taxonomicStatus = c("valid", "valid", "synonym"),
+        vernacularName = c(NA, "iguana", NA),
+        stringsAsFactors = FALSE
+    )
+    # A second author's synonym row with the same binomial comes first: it loses too.
+    got <- br_join_base_taxonomy(data.frame(scientificName = "Iguana iguana"),
+                                 base[c(3, 1, 2), ])
+    expect_equal(got$taxonID, "66168")
+    expect_equal(got$taxonRank, "species")
+    expect_equal(got$vernacularName, "iguana")
+})
+
+test_that("br_join_base_taxonomy fills authorship, establishmentMeans and taxonRemarks", {
+    base <- flora_base()
+    base$scientificName <- c("Cedrela odorata L.", "Araucaria angustifolia (Bertol.) Kuntze")
+    base$origin <- c("Native", "Cultivated")
+    base$endemism <- c("Non-endemic", "Unknown")
+    out <- data.frame(scientificName = c("Cedrela odorata", "Araucaria angustifolia"))
+    got <- br_join_base_taxonomy(out, base)
+    expect_equal(got$scientificNameAuthorship, c("L.", "(Bertol.) Kuntze"))
+    expect_equal(got$establishmentMeans, c("native", "introduced"))
+    expect_equal(got$taxonRemarks, c("endemism=Non-endemic", NA))
+})
+
+test_that("br_authorship reads the author after the species name only", {
+    expect_equal(
+        br_authorship(c("Iguana iguana (Linnaeus, 1758)", "Cissus erosa Rich. subsp. erosa",
+                        "Ardea alba", NA),
+                      c("Iguana iguana", "Cissus erosa subsp. erosa", "Ardea alba", NA)),
+        c("(Linnaeus, 1758)", NA, NA, NA)
+    )
+})
+
+test_that("br_establishment_means maps both base vocabularies to Darwin Core", {
+    expect_equal(
+        br_establishment_means(c("Native", "Naturalized", "Cultivated", "native",
+                                 "introduced", "uncertain", "Unknown", NA)),
+        c("native", "introduced", "introduced", "native", "introduced",
+          "uncertain", NA, NA)
+    )
+})
+
 test_that("br_join_base_taxonomy is a no-op without a usable base", {
     out <- data.frame(scientificName = "Cedrela odorata", stringsAsFactors = FALSE)
     expect_identical(br_join_base_taxonomy(out, NULL), out)
@@ -183,6 +235,33 @@ test_that("a suggestion that changes the name's rank is refused", {
     # The two genus inputs keep what the user wrote; only the real typo is fixed.
     expect_equal(got$scientificName,
                  c("Psidium", "Mycena", "Annona crassiflora"))
+    expect_equal(got$validation_status, c("not_found", "not_found", "ambiguous"))
+})
+
+test_that("a refused suggestion leaves nothing of its row on the input", {
+    # The verdict row describes the refused taxon: Psidium (a plant) got the clam
+    # family Sphaeriidae and the status "valid" from it.
+    raw <- data.frame(
+        input_name = "Psidium",
+        Spelling = "Probably_incorrect",
+        Suggested_name = "Pisidium vile",
+        Distance = 2,
+        taxonomicStatus = "valid",
+        family = "Sphaeriidae",
+        stringsAsFactors = FALSE
+    )
+    got <- br_map_check_result(raw, "faunabr")
+    expect_true(is.na(got$family))
+    expect_true(is.na(got$taxonomicStatus))
+})
+
+test_that("the Fauna do Brasil status 'valid' is written as 'accepted'", {
+    raw <- data.frame(input_name = "Iguana iguana", Spelling = "Correct",
+                      Suggested_name = "Iguana iguana", Distance = 0,
+                      taxonomicStatus = "valid", stringsAsFactors = FALSE)
+    got <- br_map_check_result(raw, "faunabr")
+    expect_equal(got$taxonomicStatus, "accepted")
+    expect_equal(got$validation_status, "accepted")
 })
 
 test_that("a name with no suggestion keeps the input as scientificName", {
@@ -205,6 +284,18 @@ test_that("the real base applies its fuzzy suggestion end to end", {
 
     res <- p$query("Cedrela fissillis")
     expect_equal(res$scientificName, "Cedrela fissilis")
+})
+
+test_that("the real Fauna do Brasil base answers a species with its species row", {
+    skip_if_not_installed("faunabr")
+    p <- faunabr_provider()
+    skip_if_not(p$is_available(), "faunabr base not embedded (run data-raw/prep_faunabr.R)")
+
+    res <- p$query("Megaceryle torquata")
+    expect_equal(res$taxonRank, "species")
+    expect_equal(res$vernacularName, "martim-pescador-grande")
+    expect_equal(res$scientificNameAuthorship, "(Linnaeus, 1766)")
+    expect_equal(res$establishmentMeans, "native")
 })
 
 test_that("an unresolved name carries no taxonomic status", {
