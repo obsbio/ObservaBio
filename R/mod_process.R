@@ -61,11 +61,25 @@ mod_process_ui <- function(id) {
 #' @return A reactive returning the result list (NULL until processed):
 #'   `dwc`, `audit`, `unresolved`, `cascade`, `geo`, `record_areas` (the study
 #'   area per record), `unlinked` (localities with no area), `summary`,
-#'   `timings`, `model_cols`, `pt_labels`.
+#'   `timings`, `model_cols`, `pt_labels`, `input` (the upload it came from).
+#'   It goes back to NULL when the upload changes or a new run fails.
 #' @noRd
 mod_process_server <- function(id, upload_r, iucn_key_r = shiny::reactive(NULL)) {
     shiny::moduleServer(id, function(input, output, session) {
         result_rv <- shiny::reactiveVal(NULL)
+
+        # A result belongs to one upload. A new sheet or a changed area makes it
+        # stale, and the export must not give it under the new input (audit A07).
+        shiny::observeEvent(upload_r(), {
+            res <- shiny::isolate(result_rv())
+            if (!is.null(res) && !identical(res$input, upload_r())) {
+                result_rv(NULL)
+                shiny::showNotification(
+                    "A planilha ou as áreas mudaram. Processe de novo para atualizar os resultados.",
+                    type = "warning", duration = 8
+                )
+            }
+        }, ignoreNULL = FALSE, ignoreInit = TRUE)
 
         output$ready <- shiny::renderUI({
             upload <- upload_r()
@@ -184,7 +198,8 @@ mod_process_server <- function(id, upload_r, iucn_key_r = shiny::reactive(NULL))
                     cascade = cascade, geo = geo, record_areas = record_areas,
                     unlinked = unlinked_localities(records, record_areas),
                     summary = process_summary(dwc, cascade, geo), timings = timings,
-                    model_cols = upload$model_cols, pt_labels = upload$pt_labels
+                    model_cols = upload$model_cols, pt_labels = upload$pt_labels,
+                    input = upload
                 )
             }), error = function(e) {
                 shiny::showNotification(
@@ -195,6 +210,8 @@ mod_process_server <- function(id, upload_r, iucn_key_r = shiny::reactive(NULL))
             })
 
             if (is.null(result)) {
+                # A failed run must not leave the previous result in the export.
+                result_rv(NULL)
                 return(invisible(NULL))
             }
 

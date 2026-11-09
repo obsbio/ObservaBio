@@ -244,8 +244,10 @@ build_dwc_output <- function(records, cascade, model_cols = names(records),
         }
     }
 
-    if (isTRUE(add_distribution_flag) && !"distributionFlag" %in% names(records)) {
-        records$distributionFlag <- NA_character_
+    # A flag from the input file belongs to another run, another area or another
+    # link. Only the current geo verification can give a flag (audit A12).
+    if (isTRUE(add_distribution_flag)) {
+        records$distributionFlag <- rep(NA_character_, n)
     }
 
     # Spread the geo flag onto every matching record. An upload can carry several
@@ -338,8 +340,9 @@ audit_attach_invasive <- function(audit, invasive_sources) {
     if (is.null(invasive_sources)) {
         return(audit)
     }
-    audit$invasive <- NA
-    audit$invasiveSource <- NA_character_
+    # rep() keeps the length right for a zero-row audit (audit A03).
+    audit$invasive <- rep(NA, nrow(audit))
+    audit$invasiveSource <- rep(NA_character_, nrow(audit))
     if (nrow(audit) > 0L && length(invasive_sources) > 0L) {
         idx <- match(as.character(audit$queryName), names(invasive_sources))
         hits <- which(!is.na(idx))

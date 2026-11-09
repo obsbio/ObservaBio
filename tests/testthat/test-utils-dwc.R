@@ -538,3 +538,24 @@ test_that("a fully pre-validated sheet sends nothing to the cascade", {
     expect_equal(seen$seen, character(0))
     expect_equal(nrow(cascade), 0L)
 })
+
+# ---- Audit 2026-11-08: A02, A03, A12 ---------------------------------------
+
+test_that("build_audit_table works when every row arrives prefilled (A03)", {
+    audit <- build_audit_table(empty_canonical_result(), invasive_sources = character(0))
+    expect_equal(nrow(audit), 0L)
+    expect_true(all(invasive_columns() %in% names(audit)))
+})
+
+test_that("an input distributionFlag never passes to the output (A12)", {
+    r <- data.frame(scientificName = c("Aus bus", "Cus dus"),
+                    kingdom = c("Plantae", "Plantae"),
+                    distributionFlag = c("confirmada", "confirmada"),
+                    stringsAsFactors = FALSE)
+    none <- build_dwc_output(r, empty_canonical_result(),
+                             distribution_flags = NULL, record_areas = c(NA, NA))
+    expect_true(all(is.na(none$distributionFlag)))
+    flags <- stats::setNames("sem dados disponíveis", normalize_scientific_name("Aus bus"))
+    some <- build_dwc_output(r, empty_canonical_result(), distribution_flags = flags)
+    expect_equal(some$distributionFlag, c("sem dados disponíveis", NA))
+})
