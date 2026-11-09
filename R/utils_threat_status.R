@@ -47,16 +47,39 @@ mma_load_data <- function() {
     data
 }
 
+#' The federal portarias that the embedded MMA base replaced
+#'
+#' Only these references show that an input status is out of date (see
+#' [dwc_stale_mma_source()]). A portaria that is not in this list can be a
+#' state list or a list that the app does not know, and it stays.
+#'
+#' - 148/2022: Portaria 1.783/2026 revokes it (Art. 2).
+#' - 443/2014: Portaria 1.783/2026 replaces its flora annex.
+#' - 444/2014: Portaria 1.704/2026 replaces its fauna annexes.
+#' - 445/2014: Portaria 1.667/2026 revokes it.
+#'
+#' If a new portaria replaces one of the embedded lists, add the old number
+#' here (docs/atualizacao_bases.md).
+#' @noRd
+mma_replaced_sources <- function() {
+    c("148/2022", "443/2014", "444/2014", "445/2014")
+}
+
 #' MMA threat status for a vector of scientific names
 #'
 #' Matches on the normalized key; when a name maps to several rows (different
 #' portarias) the most restrictive category wins and its source is reported.
+#' A name with no row of its own can match through its accepted name (audit
+#' A10). The source then names the accepted name, so the status is traceable.
+#' A failure to load the base stops here: see [mma_load_data()].
 #'
 #' @param scientific_names Character vector.
+#' @param accepted_names Optional accepted name per input (same length, NA
+#'   where none), from [providers_accepted_names()].
 #' @return Data frame with `scientificName`, `statusMMA`, `statusSourceMMA`
 #'   (NA where the species is not MMA-listed), same length/order as input.
 #' @noRd
-mma_lookup <- function(scientific_names) {
+mma_lookup <- function(scientific_names, accepted_names = NULL) {
     n <- length(scientific_names)
     out <- data.frame(
         scientificName  = as.character(scientific_names),
@@ -71,21 +94,93 @@ mma_lookup <- function(scientific_names) {
     data <- mma_load_data()
 
     keys <- normalize_for_matching(scientific_names)
+    alt <- if (length(accepted_names) == n) as.character(accepted_names) else rep(NA_character_, n)
+    alt_keys <- normalize_for_matching(alt)
     data_sev <- unname(.mma_severity[data$category])
     data_sev[is.na(data_sev)] <- 0L
+    by_key <- split(seq_len(nrow(data)), data$match_key)
 
     for (i in seq_len(n)) {
-        if (is.na(keys[[i]]) || !nzchar(keys[[i]])) {
-            next
+        via <- NA_character_
+        hits <- if (is_non_empty(keys[[i]])) by_key[[keys[[i]]]] else NULL
+        if (length(hits) == 0L && is_non_empty(alt_keys[[i]]) &&
+            !identical(alt_keys[[i]], keys[[i]])) {
+            hits <- by_key[[alt_keys[[i]]]]
+            via <- alt[[i]]
         }
-        hits <- which(data$match_key == keys[[i]])
         if (length(hits) == 0L) {
             next
         }
         best <- hits[[which.max(data_sev[hits])]]
         out$statusMMA[[i]] <- data$category[[best]]
-        out$statusSourceMMA[[i]] <- data$source[[best]]
+        out$statusSourceMMA[[i]] <- if (is.na(via)) {
+            data$source[[best]]
+        } else {
+            sprintf("%s (nome aceito: %s)", data$source[[best]], via)
+        }
     }
+    out
+}
+
+#' Accepted names that the providers know for a set of names
+#'
+#' Asks every provider with an `accepted_name()` accessor (the BR bases). A
+#' name gets an accepted name only when the answers agree on one name. Two
+#' different answers are a homonym or a split taxon, and a guess there could
+#' give a species the status of another one.
+#'
+#' @param names Character vector of scientific names.
+#' @param providers Providers to ask.
+#' @return Character vector, same length as `names`, NA where no single
+#'   accepted name is known.
+#' @noRd
+providers_accepted_names <- function(names, providers = get_providers()) {
+    nm <- as.character(names)
+    out <- rep(NA_character_, length(nm))
+    uniq <- unique(nm[is_non_empty(nm)])
+    if (length(uniq) == 0L) {
+        return(out)
+    }
+    answers <- list()
+    for (p in providers) {
+        if (!is.function(p$accepted_name)) {
+            next
+        }
+        a <- tryCatch(p$accepted_name(uniq), error = function(e) NULL)
+        if (!is.data.frame(a) || nrow(a) == 0L) {
+            next
+        }
+        a <- a[is_non_empty(a$acceptedName), , drop = FALSE]
+        for (i in seq_len(nrow(a))) {
+            q <- as.character(a$query_name[[i]])
+            answers[[q]] <- unique(c(answers[[q]], as.character(a$acceptedName[[i]])))
+        }
+    }
+    single <- vapply(answers, function(x) {
+        if (length(unique(normalize_for_matching(x))) == 1L) x[[1L]] else NA_character_
+    }, character(1))
+    hit <- nm %in% names(single)
+    out[hit] <- unname(single[nm[hit]])
+    out
+}
+
+#' MMA status for names, with the accepted-name route of [mma_lookup()]
+#'
+#' The names of rows that arrive already validated come straight from the
+#' sheet, often with the author ("Paubrasilia echinata (Lam.) Gagnon"). The
+#' base keys have no author, so the lookup uses the cascade normalizer first.
+#' Thus a validated row and a cascade row of one species get one key, as in
+#' [invasive_match_key()]. The output keeps the names of the input.
+#'
+#' @param scientific_names Character vector.
+#' @param providers Providers that know synonyms ([providers_accepted_names()]).
+#' @return Data frame as in [mma_lookup()].
+#' @noRd
+mma_status_for_names <- function(scientific_names, providers = get_providers()) {
+    query <- vapply(as.character(scientific_names), normalize_scientific_name,
+                    FUN.VALUE = character(1), USE.NAMES = FALSE)
+    out <- mma_lookup(query, accepted_names = providers_accepted_names(query, providers))
+    out$scientificName <- as.character(scientific_names)
     out
 }
 
@@ -360,6 +455,12 @@ iucn_category <- function(scientific_names, taxon_ids = NA) {
 
 .iucn_rredlist_cache <- create_rds_cache("iucn_rredlist")
 
+# An answer stays in the shared cache for one day, so a new IUCN assessment
+# reaches a process that runs for days. The entry cap keeps the cache from
+# growing without limit in that process.
+IUCN_CACHE_TTL_S <- 24 * 3600
+IUCN_CACHE_MAX <- 5000L
+
 # rredlist is an Imports dependency (ADR-005: Suggests silently dropped it from
 # the deploy manifest). The guard stays as cheap defence: absent, the key route
 # is off and every row falls back to the keyless category.
@@ -433,14 +534,23 @@ extract_rredlist_assessment <- function(res) {
 #' disabled, get NA. The calls go one at a time with a pause between them: the
 #' IUCN asks for at least 0.5 s, and it can block a key that calls faster.
 #'
+#' Only a real answer goes into the cache: an assessment, or an HTTP 404 (the
+#' IUCN has no such name). A timeout, a 5xx or any other error stays out of the
+#' cache, so the next run asks again (audit A15). Entries expire after
+#' `IUCN_CACHE_TTL_S`.
+#'
 #' @param genus,specific,infra Character vectors, aligned and equal length.
 #' @param key IUCN Red List API key. Defaults to the server secret.
 #' @param pause Seconds between two live calls.
 #' @param sleep Sleep seam for the pause.
+#' @param fetch Seam for `rredlist::rl_species_latest()` (tests).
+#' @param now Clock seam for the cache expiry (tests).
 #' @return Data frame with `iucnCategory`, `iucnCriteria`, same length/order.
 #' @noRd
 fetch_iucn_rredlist <- function(genus, specific, infra = NA, key = iucn_key(),
-                                pause = 0.5, sleep = Sys.sleep) {
+                                pause = 0.5, sleep = Sys.sleep,
+                                fetch = rredlist::rl_species_latest,
+                                now = Sys.time) {
     n <- length(genus)
     out <- data.frame(
         iucnCategory = rep(NA_character_, n),
@@ -464,26 +574,42 @@ fetch_iucn_rredlist <- function(genus, specific, infra = NA, key = iucn_key(),
         memo <- list()
     }
     triples <- paste(iucn_cache_ns(key), g, s, ifelse(is.na(i), "", i), sep = "")
+    t_now <- as.numeric(now())
+    fresh <- function(entry) {
+        !is.null(entry) && is.numeric(entry$at) && t_now - entry$at < IUCN_CACHE_TTL_S
+    }
     live <- 0L
     for (idx in which(valid)) {
         tkey <- triples[[idx]]
-        if (is.null(memo[[tkey]])) {
+        if (!fresh(memo[[tkey]])) {
             if (live > 0L) {
                 sleep(pause)
             }
             live <- live + 1L
             res <- tryCatch(
-                rredlist::rl_species_latest(
+                fetch(
                     genus = g[[idx]], species = s[[idx]],
                     infra = if (is_non_empty(i[[idx]])) i[[idx]] else NULL,
                     key = key, parse = TRUE
                 ),
-                error = function(e) NULL
+                error = function(e) e
             )
-            memo[[tkey]] <- extract_rredlist_assessment(res)
+            if (inherits(res, "error")) {
+                # rredlist reports "no such name" as an error with HTTP 404.
+                # Every other error can pass, so it must not look like an answer.
+                if (!grepl("HTTP 404", conditionMessage(res), fixed = TRUE)) {
+                    next
+                }
+                res <- NULL
+            }
+            memo[[tkey]] <- c(extract_rredlist_assessment(res), list(at = t_now))
         }
         out$iucnCategory[[idx]] <- memo[[tkey]]$category
         out$iucnCriteria[[idx]] <- memo[[tkey]]$criteria
+    }
+    if (length(memo) > IUCN_CACHE_MAX) {
+        at <- vapply(memo, function(e) as.numeric(e$at %||% 0), numeric(1))
+        memo <- memo[order(at, decreasing = TRUE)[seq_len(IUCN_CACHE_MAX)]]
     }
     .iucn_rredlist_cache$set(memo)
     out
@@ -507,15 +633,18 @@ fetch_iucn_rredlist <- function(genus, specific, infra = NA, key = iucn_key(),
 #' @param include_iucn Whether to resolve IUCN status. Default TRUE.
 #' @param iucn_key The user's IUCN Red List API key for this run (the optional
 #'   Step 1 field). NULL/empty falls back to the server's `IUCN_KEY` secret.
+#' @param providers Providers that know synonyms, for the MMA accepted-name
+#'   route ([mma_status_for_names()]).
 #' @return `df` with `statusMMA`, `statusSourceMMA`, `iucnCategory`,
 #'   `iucnCriteria` added.
 #' @noRd
-resolve_threat_status <- function(df, include_iucn = TRUE, iucn_key = NULL) {
+resolve_threat_status <- function(df, include_iucn = TRUE, iucn_key = NULL,
+                                  providers = get_providers()) {
     if (!is.data.frame(df) || nrow(df) == 0L) {
         return(df)
     }
     sci <- as.character(df$scientificName)
-    mma <- mma_lookup(sci)
+    mma <- mma_status_for_names(sci, providers)
     df$statusMMA <- mma$statusMMA
     df$statusSourceMMA <- mma$statusSourceMMA
 

@@ -517,6 +517,44 @@ test_that("the session key never reaches the console or the output columns", {
 
 # ---- Audit 2026-11-08: A10, A15, A16 ---------------------------------------
 
+test_that("mma_lookup finds a synonym through its accepted name (A10)", {
+    out <- mma_lookup(c("Almeidea coerulea", "Paubrasilia echinata", "Homo sapiens"),
+                      accepted_names = c("Conchocarpus coeruleus", NA, NA))
+    expect_equal(out$statusMMA, c("EN", "CR", NA))
+    expect_match(out$statusSourceMMA[[1]], "nome aceito: Conchocarpus coeruleus", fixed = TRUE)
+    expect_equal(out$statusSourceMMA[[2]], "Portaria 1.783/2026")
+})
+
+test_that("providers_accepted_names gives a name only when the providers agree (A10)", {
+    fake <- function(map) {
+        list(accepted_name = function(names, data = NULL) {
+            data.frame(query_name = names, acceptedName = unname(map[names]),
+                       stringsAsFactors = FALSE)
+        })
+    }
+    p1 <- fake(c("Aus bus" = "Aus cus", "Dus eus" = "Dus fus"))
+    p2 <- fake(c("Aus bus" = "Aus cus", "Dus eus" = "Gus hus"))
+    no_accessor <- list(accepted_name = NULL)
+    out <- providers_accepted_names(c("Aus bus", "Dus eus", "Xus yus", NA),
+                                    providers = list(p1, p2, no_accessor))
+    expect_equal(out, c("Aus cus", NA, NA, NA))
+})
+
+test_that("mma_status_for_names uses the BR synonym data (A10)", {
+    out <- mma_status_for_names("Almeidea coerulea")
+    expect_equal(out$statusMMA, "EN")
+})
+
+test_that("mma_status_for_names finds a name that carries the author (R01)", {
+    sci <- c("Paubrasilia echinata (Lam.) Gagnon, H.C.Lima & G.P.Lewis",
+             "Almeidea coerulea A.St.-Hil.")
+    out <- mma_status_for_names(sci)
+    expect_equal(out$scientificName, sci)
+    expect_equal(out$statusMMA, c("CR", "EN"))
+    expect_equal(out$statusSourceMMA[[1]], "Portaria 1.783/2026")
+    expect_match(out$statusSourceMMA[[2]], "nome aceito")
+})
+
 test_that("mma_load_data stops when the base cannot load (A16)", {
     .mma_cache$reset()
     on.exit(.mma_cache$reset(), add = TRUE)
@@ -528,4 +566,44 @@ test_that("mma_load_data stops when the base cannot load (A16)", {
     saveRDS(data.frame(x = 1), bad)
     testthat::local_mocked_bindings(br_extdata_path = function(filename) bad)
     expect_error(mma_lookup("Paubrasilia echinata"), "empty or has no")
+})
+
+test_that("fetch_iucn_rredlist does not cache a transient error (A15)", {
+    skip_if_not_installed("rredlist")
+    .iucn_rredlist_cache$reset()
+    on.exit(.iucn_rredlist_cache$reset(), add = TRUE)
+    calls <- 0L
+    flaky <- function(...) {
+        calls <<- calls + 1L
+        if (calls == 1L) stop("Timeout was reached")
+        data.frame(category = "EN", criteria = "B1ab(iii)")
+    }
+    first <- fetch_iucn_rredlist("Aus", "bus", key = "test-key", sleep = function(s) NULL,
+                                 fetch = flaky)
+    expect_true(is.na(first$iucnCategory))
+    second <- fetch_iucn_rredlist("Aus", "bus", key = "test-key", sleep = function(s) NULL,
+                                  fetch = flaky)
+    expect_equal(second$iucnCategory, "EN")
+    expect_equal(calls, 2L)
+})
+
+test_that("fetch_iucn_rredlist caches an HTTP 404 until the entry expires (A15)", {
+    skip_if_not_installed("rredlist")
+    .iucn_rredlist_cache$reset()
+    on.exit(.iucn_rredlist_cache$reset(), add = TRUE)
+    calls <- 0L
+    missing <- function(...) {
+        calls <<- calls + 1L
+        stop("No results returned for query. (HTTP 404)")
+    }
+    t0 <- as.POSIXct("2026-11-08 10:00:00", tz = "UTC")
+    run <- function(at) {
+        fetch_iucn_rredlist("Aus", "bus", key = "test-key", sleep = function(s) NULL,
+                            fetch = missing, now = function() at)
+    }
+    expect_true(is.na(run(t0)$iucnCategory))
+    run(t0 + 3600)
+    expect_equal(calls, 1L)
+    run(t0 + IUCN_CACHE_TTL_S + 1)
+    expect_equal(calls, 2L)
 })

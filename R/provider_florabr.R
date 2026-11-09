@@ -57,6 +57,10 @@ florabr_provider <- function() {
         },
         exact_match = function(names, data = NULL) {
             br_exact_match("florabr", names, data = data, filename = .FLORABR_RDS)
+        },
+        accepted_name = function(names, data = NULL) {
+            br_accepted_name("florabr", names, data = data, filename = .FLORABR_RDS,
+                             accepted_col = "acceptedName")
         }
     )
 }

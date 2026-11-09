@@ -20,10 +20,10 @@
 #' [invasive_lookup()] at runtime -- so a name carrying an author or a
 #' cf./aff. qualifier lands on the same key from either side (LESSONS L-006).
 #'
-#' Author-stripping matters here in a way it does not for [mma_lookup()]: the MMA
-#' lookup only ever sees cascade-resolved names, while this one also sees the
-#' names of already-validated rows, straight from the user's sheet, where
-#' "Abrus precatorius L." is perfectly normal.
+#' Author-stripping matters because this lookup also sees the names of
+#' already-validated rows, straight from the user's sheet, where
+#' "Abrus precatorius L." is perfectly normal. [mma_status_for_names()] uses
+#' the same normalizer for the same reason.
 #'
 #' @param scientific_names Character vector.
 #' @return Character vector of match keys (NA where the name is unusable).

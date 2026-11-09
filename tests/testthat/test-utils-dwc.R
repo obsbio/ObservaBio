@@ -541,6 +541,75 @@ test_that("a fully pre-validated sheet sends nothing to the cascade", {
 
 # ---- Audit 2026-11-08: A02, A03, A12 ---------------------------------------
 
+test_that("a prefilled row gets the current MMA status (A02)", {
+    r <- data.frame(
+        scientificName = c("Paubrasilia echinata", "Homo sapiens", "Homo sapiens"),
+        kingdom = c("Plantae", "Animalia", "Animalia"),
+        status = c("(EN) Em Perigo", "(VU) Vulneravel", "(VU) Vulneravel"),
+        statusSource = c("Portaria 148/2022", "Portaria 148/2022", "Lista estadual SP"),
+        stringsAsFactors = FALSE
+    )
+    out <- build_dwc_output(r, empty_canonical_result(),
+                            mma_status = mma_lookup(r$scientificName),
+                            mma_replaced = mma_replaced_sources())
+    expect_equal(out$status[[1]], "(CR) Criticamente Em Perigo")
+    expect_equal(out$statusSource[[1]], "Portaria 1.783/2026")
+    # A status from a replaced list goes. A source of the user stays (ADR-029).
+    expect_true(is.na(out$status[[2]]))
+    expect_true(is.na(out$statusSource[[2]]))
+    expect_equal(out$status[[3]], "(VU) Vulneravel")
+    expect_equal(out$statusSource[[3]], "Lista estadual SP")
+})
+
+test_that("the MMA update adds no column that the model does not have (A02)", {
+    r <- data.frame(scientificName = "Paubrasilia echinata", kingdom = "Plantae",
+                    stringsAsFactors = FALSE)
+    out <- build_dwc_output(r, empty_canonical_result(),
+                            mma_status = mma_lookup(r$scientificName),
+                            mma_replaced = mma_replaced_sources())
+    expect_false(any(c("status", "statusSource") %in% names(out)))
+})
+
+test_that("dwc_stale_mma_source finds only a replaced federal portaria (R02)", {
+    rep_src <- mma_replaced_sources()
+    stale <- c("Portaria 148/2022", "portaria 443/2014",
+               "Portaria MMA n\u00ba 148, de 7 de junho de 2022",
+               "Portaria GM/MMA 445/2014", "Portaria 148 de 2022")
+    keep <- c("Portaria 1.783/2026", "Portaria MMA 1.783/2026",
+              "Portaria GM/MMA n\u00ba 1.704/2026",
+              # A state list, a test source, a mixed source and free text.
+              "Portaria estadual de teste 999/2026", "Portaria SEMA 148/2022",
+              "Portaria 148/2022; IUCN 2024", "Portaria 148/2022 e lista estadual",
+              "IUCN 2024", "Lista estadual SP", "portaria", NA, "")
+    expect_true(all(dwc_stale_mma_source(stale, rep_src)))
+    expect_false(any(dwc_stale_mma_source(keep, rep_src)))
+    expect_equal(dwc_mma_reference(c("Portaria MMA 1.783/2026", "Portaria SEMA 1/2020")),
+                 c("1783/2026", NA))
+})
+
+test_that("no replaced portaria is a source of the embedded base (R02)", {
+    current <- dwc_mma_reference(unique(mma_load_data()$source))
+    expect_false(anyNA(current))
+    expect_false(any(current %in% gsub(".", "", mma_replaced_sources(), fixed = TRUE)))
+})
+
+test_that("an unlisted row keeps a state or ambiguous source (R02)", {
+    r <- data.frame(
+        scientificName = c("Aus bus", "Aus bus", "Aus bus"),
+        kingdom = "Plantae",
+        status = "(EN) Em Perigo",
+        statusSource = c("Portaria estadual de teste 999/2026",
+                         "Portaria MMA 1.783/2026", "Portaria 148/2022"),
+        stringsAsFactors = FALSE
+    )
+    out <- build_dwc_output(r, empty_canonical_result(),
+                            mma_status = mma_lookup(r$scientificName),
+                            mma_replaced = mma_replaced_sources())
+    expect_equal(out$statusSource, c("Portaria estadual de teste 999/2026",
+                                     "Portaria MMA 1.783/2026", NA))
+    expect_equal(out$status, c("(EN) Em Perigo", "(EN) Em Perigo", NA))
+})
+
 test_that("build_audit_table works when every row arrives prefilled (A03)", {
     audit <- build_audit_table(empty_canonical_result(), invasive_sources = character(0))
     expect_equal(nrow(audit), 0L)

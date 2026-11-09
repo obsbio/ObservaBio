@@ -150,6 +150,9 @@ mod_process_server <- function(id, upload_r, iucn_key_r = shiny::reactive(NULL))
                 # from the reactive and handed to the pure function — never
                 # stored, logged, or carried into the result.
                 cascade <- resolve_threat_status(cascade, iucn_key = iucn_key_r())
+                # The MMA check is offline, so it also runs on the rows that
+                # arrive already validated (audit A02).
+                record_mma <- mma_status_for_names(records[["scientificName"]])
                 # The invasive cross-check is offline and runs on EVERY species
                 # (new + already validated), so it rides along with the status
                 # phase instead of paying for a phase of its own.
@@ -185,7 +188,9 @@ mod_process_server <- function(id, upload_r, iucn_key_r = shiny::reactive(NULL))
                     records, cascade, model_cols = upload$model_cols,
                     distribution_flags = if (!is.null(geo)) geo$distribution_flags else NULL,
                     invasive_sources = invasive_sources,
-                    record_areas = record_areas
+                    record_areas = record_areas,
+                    mma_status = record_mma,
+                    mma_replaced = mma_replaced_sources()
                 )
                 audit <- build_audit_table(cascade, original_names = new_names, geo = geo,
                                            invasive_sources = invasive_sources)

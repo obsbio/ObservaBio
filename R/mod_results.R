@@ -409,7 +409,9 @@ mod_results_server <- function(id, result_r, visible_r = shiny::reactive(TRUE)) 
                         class = "detail-grid", style = "margin-top: var(--space-3);",
                         kv("Validação", if (is.na(row$matchType)) "já validado" else
                             paste0(row$matchType, if (!is.na(row$validator)) paste0(" · ", row$validator) else "")),
-                        kv_threat("Conservação", row$status),
+                        kv_threat("Conservação (MMA)", row$status),
+                        kv("Fonte MMA", row$statusSource),
+                        kv_threat("Conservação (IUCN)", row$statusIUCN),
                         kv("GBIF ≤ 10 km", gbif_txt),
                         kv_invasive("Exótica invasora", row$invasive, row$invasiveSource)
                     )

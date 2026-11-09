@@ -55,6 +55,10 @@ faunabr_provider <- function() {
         },
         exact_match = function(names, data = NULL) {
             br_exact_match("faunabr", names, data = data, filename = .FAUNABR_RDS)
+        },
+        accepted_name = function(names, data = NULL) {
+            br_accepted_name("faunabr", names, data = data, filename = .FAUNABR_RDS,
+                             accepted_col = "validName")
         }
     )
 }

@@ -111,6 +111,66 @@ br_exact_match <- function(provider_id, names, data = NULL, filename) {
     names_chr[normalize_for_matching(names_chr) %in% br_species_key(provider_id, data)]
 }
 
+#' Accepted name of a synonym in an embedded BR base
+#'
+#' The MMA list uses the accepted name of a taxon. A user can enter a synonym,
+#' and the GBIF backbone can keep that synonym as the output name. This lookup
+#' gives the accepted name from the national base, so the MMA check can use it
+#' (audit A10).
+#'
+#' The lookup is strict. It gives `NA` when the name is also an accepted name in
+#' the base (a homonym), or when the synonym rows point to more than one
+#' accepted name. A wrong accepted name gives a wrong threat status, which is
+#' worse than no status.
+#'
+#' @param provider_id Provider id (cache key).
+#' @param names Character vector of scientific names.
+#' @param data The embedded base, or NULL to load the cached base.
+#' @param filename Base RDS basename, used to load when `data` is NULL.
+#' @param accepted_col Column that holds the accepted name of a synonym row.
+#' @return Data frame `query_name`/`acceptedName` (one row per unique name).
+#' @noRd
+br_accepted_name <- function(provider_id, names, data = NULL, filename,
+                             accepted_col) {
+    names_chr <- unique(as.character(names))
+    names_chr <- names_chr[!is.na(names_chr) & nzchar(names_chr)]
+    out <- data.frame(query_name = names_chr,
+                      acceptedName = rep(NA_character_, length(names_chr)),
+                      stringsAsFactors = FALSE)
+    if (length(names_chr) == 0L) {
+        return(out)
+    }
+    if (is.null(data)) {
+        data <- br_load_data(provider_id, filename)
+    }
+    needed <- c("species", "taxonomicStatus", accepted_col)
+    if (!is.data.frame(data) || nrow(data) == 0L || !all(needed %in% names(data))) {
+        return(out)
+    }
+    spk <- br_species_key(provider_id, data)
+    status <- tolower(as.character(data$taxonomicStatus))
+    accepted <- trimws(as.character(data[[accepted_col]]))
+    is_syn <- !is.na(status) & status == "synonym" & !is.na(accepted) & nzchar(accepted)
+    is_acc <- !is.na(status) & status %in% c("accepted", "valid")
+
+    acc_keys <- unique(spk[is_acc])
+    syn_rows <- which(is_syn & !is.na(spk))
+    by_key <- split(syn_rows, spk[syn_rows])
+    key_in <- normalize_for_matching(names_chr)
+    out$acceptedName <- vapply(key_in, function(k) {
+        if (is.na(k) || k %in% acc_keys) {
+            return(NA_character_)
+        }
+        hit <- by_key[[k]]
+        if (is.null(hit)) {
+            return(NA_character_)
+        }
+        cand <- unique(accepted[hit])
+        if (length(unique(normalize_for_matching(cand))) != 1L) NA_character_ else cand[[1L]]
+    }, FUN.VALUE = character(1), USE.NAMES = FALSE)
+    out
+}
+
 #' UF/biome distribution for a set of species from an embedded BR base
 #'
 #' Matches each input name against the base `species` binomial (normalized) and
